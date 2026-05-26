@@ -12,6 +12,7 @@ from rich.console import Console
 
 from checkowners.analyze import analyze_ownership
 from checkowners.config import load_config
+from checkowners.drift import detect_drift
 from checkowners.generate import generate_codeowners
 
 app = typer.Typer(
@@ -100,7 +101,38 @@ def validate(json_output: JsonOption = False) -> None:
 @app.command()
 def drift(json_output: JsonOption = False) -> None:
     """Detect drift between inferred and current CODEOWNERS."""
-    _not_implemented("drift", json_output=json_output)
+    config = load_config()
+    repo_root = Path.cwd()
+    try:
+        ownership = analyze_ownership(repo_root, config)
+    except subprocess.CalledProcessError as exc:
+        console.print(f"[red]Git command failed:[/red] {exc}")
+        raise typer.Exit(code=1) from None
+    result = detect_drift(repo_root, ownership, config)
+    if json_output:
+        data = {
+            "stale": list(result.stale),
+            "missing": list(result.missing),
+            "changed": list(result.changed),
+            "drift_detected": result.drift_detected,
+        }
+        typer.echo(json.dumps(data, indent=2))
+    else:
+        if not result.drift_detected:
+            console.print("[green]No drift detected.[/green]")
+            return
+        from rich.table import Table
+
+        table = Table(title="CODEOWNERS Drift")
+        table.add_column("Category", style="bold")
+        table.add_column("Paths")
+        if result.stale:
+            table.add_row("[red]Stale[/red]", ", ".join(result.stale))
+        if result.missing:
+            table.add_row("[yellow]Missing[/yellow]", ", ".join(result.missing))
+        if result.changed:
+            table.add_row("[cyan]Changed[/cyan]", ", ".join(result.changed))
+        console.print(table)
 
 
 @app.command()

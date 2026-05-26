@@ -61,10 +61,12 @@ def test_detect_drift_stale_entry(tmp_path: Path) -> None:
 
 def test_detect_drift_missing_entry(tmp_path: Path) -> None:
     _write_codeowners(tmp_path, "/src/main.py alice@example.com\n")
-    ownership = _make_ownership({
-        "src/main.py": ("alice@example.com",),
-        "src/new.py": ("carol@example.com",),
-    })
+    ownership = _make_ownership(
+        {
+            "src/main.py": ("alice@example.com",),
+            "src/new.py": ("carol@example.com",),
+        }
+    )
     config = Config(drift=DriftConfig(mode="commit"))
     result = detect_drift(tmp_path, ownership, config)
     assert "/src/new.py" in result.missing
@@ -93,10 +95,12 @@ def test_detect_drift_both_mode(tmp_path: Path) -> None:
         tmp_path,
         "/src/main.py alice@example.com\n/src/old.py bob@example.com\n",
     )
-    ownership = _make_ownership({
-        "src/main.py": ("carol@example.com",),
-        "src/new.py": ("dave@example.com",),
-    })
+    ownership = _make_ownership(
+        {
+            "src/main.py": ("carol@example.com",),
+            "src/new.py": ("dave@example.com",),
+        }
+    )
     config = Config(drift=DriftConfig(mode="both"))
     result = detect_drift(tmp_path, ownership, config)
     assert "/src/old.py" in result.stale
@@ -124,10 +128,12 @@ def test_parse_codeowners_missing_file(tmp_path: Path) -> None:
 
 
 def test_normalize_inferred_adds_slash() -> None:
-    ownership = _make_ownership({
-        "src/main.py": ("alice@example.com",),
-        "/already/slashed.py": ("bob@example.com",),
-    })
+    ownership = _make_ownership(
+        {
+            "src/main.py": ("alice@example.com",),
+            "/already/slashed.py": ("bob@example.com",),
+        }
+    )
     result = _normalize_inferred(ownership)
     assert "/src/main.py" in result
     assert "/already/slashed.py" in result
@@ -136,7 +142,10 @@ def test_normalize_inferred_adds_slash() -> None:
 def test_compare_empty_both() -> None:
     result = _compare({}, {}, "both")
     assert result == DriftResult(
-        stale=(), missing=(), changed=(), drift_detected=False,
+        stale=(),
+        missing=(),
+        changed=(),
+        drift_detected=False,
     )
 
 

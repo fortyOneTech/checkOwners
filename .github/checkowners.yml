@@ -1,0 +1,5 @@
+analysis:
+  min_commits: 1
+  top_n_owners: 2
+drift:
+  mode: both

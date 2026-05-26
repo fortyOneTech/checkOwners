@@ -90,11 +90,13 @@ def _write_github_output(result: DriftResult) -> None:
     output_file = os.environ.get("GITHUB_OUTPUT")
     if not output_file:
         return
-    data = json.dumps({
-        "stale": list(result.stale),
-        "missing": list(result.missing),
-        "changed": list(result.changed),
-        "drift_detected": result.drift_detected,
-    })
+    data = json.dumps(
+        {
+            "stale": list(result.stale),
+            "missing": list(result.missing),
+            "changed": list(result.changed),
+            "drift_detected": result.drift_detected,
+        }
+    )
     with open(output_file, "a", encoding="utf-8") as f:
         f.write(f"checkowners_drift={data}\n")

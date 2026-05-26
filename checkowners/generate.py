@@ -44,22 +44,14 @@ def _collect_owned_paths(
 ) -> list[tuple[str, tuple[str, ...]]]:
     """Return owned paths sorted alphabetically with their owners."""
     return sorted(
-        (
-            (_normalize_path(path), owners)
-            for path, owners in ownership.owners.items()
-            if owners
-        ),
+        ((_normalize_path(path), owners) for path, owners in ownership.owners.items() if owners),
         key=lambda item: item[0],
     )
 
 
 def _collect_unowned_paths(ownership: OwnershipMap) -> list[str]:
     """Return paths with no inferred owners, sorted alphabetically."""
-    return sorted(
-        _normalize_path(path)
-        for path, owners in ownership.owners.items()
-        if not owners
-    )
+    return sorted(_normalize_path(path) for path, owners in ownership.owners.items() if not owners)
 
 
 def _normalize_path(path: str) -> str:

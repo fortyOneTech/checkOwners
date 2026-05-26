@@ -44,27 +44,33 @@ def _validate_entry(line_number: int, line: str) -> list[ValidationError]:
     parts = line.split()
 
     if len(parts) < 2:
-        errors.append(ValidationError(
-            line_number=line_number,
-            line=line,
-            message="Entry must have a path and at least one owner",
-        ))
+        errors.append(
+            ValidationError(
+                line_number=line_number,
+                line=line,
+                message="Entry must have a path and at least one owner",
+            )
+        )
         return errors
 
     path = parts[0]
     if not path.startswith("/") and not path.startswith("*"):
-        errors.append(ValidationError(
-            line_number=line_number,
-            line=line,
-            message=f"Path must start with '/' or '*': {path}",
-        ))
+        errors.append(
+            ValidationError(
+                line_number=line_number,
+                line=line,
+                message=f"Path must start with '/' or '*': {path}",
+            )
+        )
 
     for owner in parts[1:]:
         if not _OWNER_PATTERN.match(owner):
-            errors.append(ValidationError(
-                line_number=line_number,
-                line=line,
-                message=f"Invalid owner format: {owner}",
-            ))
+            errors.append(
+                ValidationError(
+                    line_number=line_number,
+                    line=line,
+                    message=f"Invalid owner format: {owner}",
+                )
+            )
 
     return errors

@@ -45,11 +45,13 @@ def test_generate_custom_header() -> None:
 
 
 def test_generate_paths_sorted() -> None:
-    ownership = _make_ownership({
-        "z.py": ("alice@example.com",),
-        "a.py": ("bob@example.com",),
-        "m.py": ("carol@example.com",),
-    })
+    ownership = _make_ownership(
+        {
+            "z.py": ("alice@example.com",),
+            "a.py": ("bob@example.com",),
+            "m.py": ("carol@example.com",),
+        }
+    )
     config = Config()
     content = _build_codeowners_content(ownership, config)
     lines = [line for line in content.splitlines() if line and not line.startswith("#")]
@@ -59,19 +61,23 @@ def test_generate_paths_sorted() -> None:
 
 
 def test_generate_multiple_owners() -> None:
-    ownership = _make_ownership({
-        "src/api.py": ("alice@example.com", "bob@example.com"),
-    })
+    ownership = _make_ownership(
+        {
+            "src/api.py": ("alice@example.com", "bob@example.com"),
+        }
+    )
     config = Config()
     content = _build_codeowners_content(ownership, config)
     assert "/src/api.py alice@example.com bob@example.com" in content
 
 
 def test_generate_include_unowned_true() -> None:
-    ownership = _make_ownership({
-        "src/main.py": ("alice@example.com",),
-        "src/orphan.py": (),
-    })
+    ownership = _make_ownership(
+        {
+            "src/main.py": ("alice@example.com",),
+            "src/orphan.py": (),
+        }
+    )
     config = Config(output=OutputConfig(include_unowned=True))
     content = _build_codeowners_content(ownership, config)
     assert "# Unowned paths (needs triage)" in content
@@ -79,10 +85,12 @@ def test_generate_include_unowned_true() -> None:
 
 
 def test_generate_include_unowned_false() -> None:
-    ownership = _make_ownership({
-        "src/main.py": ("alice@example.com",),
-        "src/orphan.py": (),
-    })
+    ownership = _make_ownership(
+        {
+            "src/main.py": ("alice@example.com",),
+            "src/orphan.py": (),
+        }
+    )
     config = Config(output=OutputConfig(include_unowned=False))
     content = _build_codeowners_content(ownership, config)
     assert "orphan" not in content
@@ -111,21 +119,25 @@ def test_normalize_path_adds_leading_slash() -> None:
 
 
 def test_collect_owned_paths_sorted() -> None:
-    ownership = _make_ownership({
-        "b.py": ("alice@example.com",),
-        "a.py": ("bob@example.com",),
-    })
+    ownership = _make_ownership(
+        {
+            "b.py": ("alice@example.com",),
+            "a.py": ("bob@example.com",),
+        }
+    )
     result = _collect_owned_paths(ownership)
     assert result[0][0] == "/a.py"
     assert result[1][0] == "/b.py"
 
 
 def test_collect_unowned_paths_sorted() -> None:
-    ownership = _make_ownership({
-        "z.py": (),
-        "a.py": (),
-        "m.py": ("alice@example.com",),
-    })
+    ownership = _make_ownership(
+        {
+            "z.py": (),
+            "a.py": (),
+            "m.py": ("alice@example.com",),
+        }
+    )
     result = _collect_unowned_paths(ownership)
     assert result == ["/a.py", "/z.py"]
 

@@ -17,15 +17,14 @@ def analyze_ownership(repo_root: Path, config: Config) -> OwnershipMap:
     history = _get_commit_history(repo_root, config.analysis.lookback_days)
     counts = _count_ownership(history)
     filtered = _filter_excluded(counts, config.paths.exclude)
+    filtered = _filter_nonexistent(filtered, repo_root)
     selected = _select_top_owners(
         filtered, config.analysis.min_commits, config.analysis.top_n_owners
     )
     return OwnershipMap(owners=selected, last_analyzed=datetime.now(UTC))
 
 
-def _get_commit_history(
-    repo_root: Path, since_days: int
-) -> list[tuple[str, tuple[str, ...]]]:
+def _get_commit_history(repo_root: Path, since_days: int) -> list[tuple[str, tuple[str, ...]]]:
     """Run git log and parse (author, changed_files) pairs."""
     result = subprocess.run(
         [
@@ -85,6 +84,14 @@ def _filter_excluded(
     }
 
 
+def _filter_nonexistent(
+    counts: dict[str, dict[str, int]],
+    repo_root: Path,
+) -> dict[str, dict[str, int]]:
+    """Remove paths that no longer exist on disk."""
+    return {path: authors for path, authors in counts.items() if (repo_root / path).exists()}
+
+
 def _is_excluded(path: str, patterns: tuple[str, ...]) -> bool:
     """Check if a path matches any exclusion pattern."""
     return any(fnmatch.fnmatch(path, pattern) for pattern in patterns)
@@ -98,9 +105,7 @@ def _select_top_owners(
     """Apply min_commits filter and select top-N owners per path."""
     result: dict[str, tuple[str, ...]] = {}
     for path, authors in counts.items():
-        qualified = {
-            author: count for author, count in authors.items() if count >= min_commits
-        }
+        qualified = {author: count for author, count in authors.items() if count >= min_commits}
         if not qualified:
             continue
         sorted_owners = sorted(qualified.items(), key=lambda item: (-item[1], item[0]))

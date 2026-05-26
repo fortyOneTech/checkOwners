@@ -31,7 +31,6 @@ JsonOption = Annotated[
 ]
 
 
-
 @app.command()
 def analyze(json_output: JsonOption = False) -> None:
     """Analyze git history to infer file ownership."""
@@ -92,9 +91,7 @@ def print_cmd(json_output: JsonOption = False) -> None:
         console.print(f"[red]Git command failed:[/red] {exc}")
         raise typer.Exit(code=1) from None
     if json_output:
-        data = {
-            path: list(owners) for path, owners in sorted(ownership.owners.items())
-        }
+        data = {path: list(owners) for path, owners in sorted(ownership.owners.items())}
         typer.echo(json.dumps(data, indent=2))
     else:
         for path in sorted(ownership.owners):
@@ -110,9 +107,7 @@ def validate(json_output: JsonOption = False) -> None:
     if json_output:
         data = {
             "valid": len(errors) == 0,
-            "errors": [
-                {"line": e.line_number, "message": e.message} for e in errors
-            ],
+            "errors": [{"line": e.line_number, "message": e.message} for e in errors],
         }
         typer.echo(json.dumps(data, indent=2))
     else:

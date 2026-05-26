@@ -22,7 +22,10 @@ _OWNERSHIP = OwnershipMap(
 )
 _EMPTY_OWNERSHIP = OwnershipMap(owners={}, last_analyzed=_NOW)
 _DRIFT_DETECTED = DriftResult(
-    stale=("/old.py",), missing=("/new.py",), changed=("/changed.py",), drift_detected=True,
+    stale=("/old.py",),
+    missing=("/new.py",),
+    changed=("/changed.py",),
+    drift_detected=True,
 )
 _NO_DRIFT = DriftResult(stale=(), missing=(), changed=(), drift_detected=False)
 

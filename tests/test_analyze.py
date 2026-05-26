@@ -11,6 +11,7 @@ import pytest
 from checkowners.analyze import (
     _count_ownership,
     _filter_excluded,
+    _filter_nonexistent,
     _is_excluded,
     _parse_log_output,
     _select_top_owners,
@@ -32,6 +33,17 @@ def _mock_run(stdout: str) -> subprocess.CompletedProcess[str]:
     return subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
 
 
+_MOCK_GIT = "checkowners.analyze.subprocess.run"
+_MOCK_EXIST = "checkowners.analyze._filter_nonexistent"
+
+
+def _passthrough(
+    counts: dict[str, dict[str, int]],
+    _root: Path,
+) -> dict[str, dict[str, int]]:
+    return counts
+
+
 def test_analyze_basic() -> None:
     commits = [
         ("alice@example.com", ["src/main.py", "src/utils.py"]),
@@ -42,7 +54,10 @@ def test_analyze_basic() -> None:
     stdout = _make_git_log_output(commits)
     config = Config(analysis=AnalysisConfig(min_commits=1, top_n_owners=2))
 
-    with patch("checkowners.analyze.subprocess.run", return_value=_mock_run(stdout)):
+    with (
+        patch(_MOCK_GIT, return_value=_mock_run(stdout)),
+        patch(_MOCK_EXIST, side_effect=_passthrough),
+    ):
         result = analyze_ownership(Path("/fake"), config)
 
     assert "src/main.py" in result.owners
@@ -56,7 +71,10 @@ def test_analyze_basic() -> None:
 def test_analyze_lookback_days() -> None:
     config = Config(analysis=AnalysisConfig(lookback_days=90, min_commits=1))
 
-    with patch("checkowners.analyze.subprocess.run", return_value=_mock_run("")) as mock:
+    with (
+        patch(_MOCK_GIT, return_value=_mock_run("")) as mock,
+        patch(_MOCK_EXIST, side_effect=_passthrough),
+    ):
         analyze_ownership(Path("/fake"), config)
 
     args = mock.call_args[0][0]
@@ -73,7 +91,10 @@ def test_analyze_min_commits_filter() -> None:
     stdout = _make_git_log_output(commits)
     config = Config(analysis=AnalysisConfig(min_commits=2, top_n_owners=5))
 
-    with patch("checkowners.analyze.subprocess.run", return_value=_mock_run(stdout)):
+    with (
+        patch(_MOCK_GIT, return_value=_mock_run(stdout)),
+        patch(_MOCK_EXIST, side_effect=_passthrough),
+    ):
         result = analyze_ownership(Path("/fake"), config)
 
     assert result.owners["src/main.py"] == ("alice@example.com",)
@@ -88,7 +109,10 @@ def test_analyze_top_n_owners() -> None:
     stdout = _make_git_log_output(commits)
     config = Config(analysis=AnalysisConfig(min_commits=1, top_n_owners=2))
 
-    with patch("checkowners.analyze.subprocess.run", return_value=_mock_run(stdout)):
+    with (
+        patch(_MOCK_GIT, return_value=_mock_run(stdout)),
+        patch(_MOCK_EXIST, side_effect=_passthrough),
+    ):
         result = analyze_ownership(Path("/fake"), config)
 
     assert result.owners["f.py"] == ("alice@example.com", "bob@example.com")
@@ -103,7 +127,10 @@ def test_analyze_path_exclusions() -> None:
     stdout = _make_git_log_output(commits)
     config = Config(analysis=AnalysisConfig(min_commits=1))
 
-    with patch("checkowners.analyze.subprocess.run", return_value=_mock_run(stdout)):
+    with (
+        patch(_MOCK_GIT, return_value=_mock_run(stdout)),
+        patch(_MOCK_EXIST, side_effect=_passthrough),
+    ):
         result = analyze_ownership(Path("/fake"), config)
 
     assert "src/main.py" in result.owners
@@ -115,7 +142,7 @@ def test_analyze_path_exclusions() -> None:
 def test_analyze_empty_repo() -> None:
     config = Config(analysis=AnalysisConfig(min_commits=1))
 
-    with patch("checkowners.analyze.subprocess.run", return_value=_mock_run("")):
+    with patch(_MOCK_GIT, return_value=_mock_run("")), patch(_MOCK_EXIST, side_effect=_passthrough):
         result = analyze_ownership(Path("/fake"), config)
 
     assert result.owners == {}
@@ -126,7 +153,10 @@ def test_analyze_single_author() -> None:
     stdout = _make_git_log_output(commits)
     config = Config(analysis=AnalysisConfig(min_commits=1, top_n_owners=2))
 
-    with patch("checkowners.analyze.subprocess.run", return_value=_mock_run(stdout)):
+    with (
+        patch(_MOCK_GIT, return_value=_mock_run(stdout)),
+        patch(_MOCK_EXIST, side_effect=_passthrough),
+    ):
         result = analyze_ownership(Path("/fake"), config)
 
     for path in ("a.py", "b.py", "c.py"):
@@ -189,6 +219,17 @@ def test_get_commit_history_subprocess_error() -> None:
 def test_parse_log_output_empty() -> None:
     assert _parse_log_output("") == []
     assert _parse_log_output("  \n  ") == []
+
+
+def test_filter_nonexistent(tmp_path: Path) -> None:
+    (tmp_path / "exists.py").write_text("x", encoding="utf-8")
+    counts = {
+        "exists.py": {"alice": 3},
+        "deleted.py": {"bob": 5},
+    }
+    result = _filter_nonexistent(counts, tmp_path)
+    assert "exists.py" in result
+    assert "deleted.py" not in result
 
 
 def test_select_top_owners_all_below_threshold() -> None:

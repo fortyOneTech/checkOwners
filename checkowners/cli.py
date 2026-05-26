@@ -12,6 +12,7 @@ from rich.console import Console
 
 from checkowners.analyze import analyze_ownership
 from checkowners.config import load_config
+from checkowners.generate import generate_codeowners
 
 app = typer.Typer(
     name="checkowners",
@@ -69,7 +70,19 @@ def analyze(json_output: JsonOption = False) -> None:
 @app.command()
 def generate(json_output: JsonOption = False) -> None:
     """Generate a CODEOWNERS file from inferred ownership."""
-    _not_implemented("generate", json_output=json_output)
+    config = load_config()
+    repo_root = Path.cwd()
+    try:
+        ownership = analyze_ownership(repo_root, config)
+    except subprocess.CalledProcessError as exc:
+        console.print(f"[red]Git command failed:[/red] {exc}")
+        raise typer.Exit(code=1) from None
+    content = generate_codeowners(repo_root, ownership, config)
+    if json_output:
+        data = {"path": ".github/CODEOWNERS", "content": content}
+        typer.echo(json.dumps(data, indent=2))
+    else:
+        console.print("[green]Generated .github/CODEOWNERS[/green]")
 
 
 @app.command(name="print")

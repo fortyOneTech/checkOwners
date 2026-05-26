@@ -1,0 +1,76 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "checkowners"
+version = "0.1.0"
+description = "Infer and maintain CODEOWNERS from git history. Drift detection, CI-native JSON output, and GitHub Actions integration."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "Samir Musali", email = "samir.musali@gmail.com" },
+]
+keywords = [
+    "codeowners",
+    "git",
+    "ownership",
+    "drift-detection",
+    "cli",
+    "github-actions",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Quality Assurance",
+    "Typing :: Typed",
+]
+dependencies = [
+    "typer>=0.9.0",
+    "rich>=13.0.0",
+    "gitpython>=3.1.0",
+    "pygithub>=2.0.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+checkowners = "checkowners.cli:main"
+
+[tool.hatch.envs.default]
+dependencies = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.4.0",
+    "mypy>=1.0",
+    "types-PyYAML",
+]
+
+[tool.hatch.envs.default.scripts]
+test = "pytest {args:tests/ --cov=checkowners --cov-report=term-missing}"
+lint = ["ruff check .", "mypy --strict checkowners/"]
+fmt = "ruff format ."
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "ANN", "B", "A", "SIM"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+strict = true
+python_version = "3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-markers"

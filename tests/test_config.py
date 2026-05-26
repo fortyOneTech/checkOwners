@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from checkowners.config import load_config
+from checkowners.config import find_codeowners_path, load_config
 from checkowners.models import Config
 
 
@@ -124,3 +124,39 @@ def test_paths_exclude_override(tmp_path: Path) -> None:
     cfg = load_config(repo_root=root)
     assert cfg.paths.exclude == ("*.tmp",)
     assert "*.lock" not in cfg.paths.exclude
+
+
+def test_load_config_github_section(tmp_path: Path) -> None:
+    root = _write_config(tmp_path, "github:\n  org: myorg\n  resolve_teams: false\n")
+    cfg = load_config(repo_root=root)
+    assert cfg.github.org == "myorg"
+    assert cfg.github.resolve_teams is False
+    assert cfg.github.resolve_handles is True
+
+
+def test_find_codeowners_path_github_dir(tmp_path: Path) -> None:
+    (tmp_path / ".github").mkdir()
+    (tmp_path / ".github" / "CODEOWNERS").write_text("# test", encoding="utf-8")
+    assert find_codeowners_path(tmp_path) == tmp_path / ".github" / "CODEOWNERS"
+
+
+def test_find_codeowners_path_root(tmp_path: Path) -> None:
+    (tmp_path / "CODEOWNERS").write_text("# test", encoding="utf-8")
+    assert find_codeowners_path(tmp_path) == tmp_path / "CODEOWNERS"
+
+
+def test_find_codeowners_path_docs(tmp_path: Path) -> None:
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "CODEOWNERS").write_text("# test", encoding="utf-8")
+    assert find_codeowners_path(tmp_path) == tmp_path / "docs" / "CODEOWNERS"
+
+
+def test_find_codeowners_path_priority(tmp_path: Path) -> None:
+    (tmp_path / ".github").mkdir()
+    (tmp_path / ".github" / "CODEOWNERS").write_text("# github", encoding="utf-8")
+    (tmp_path / "CODEOWNERS").write_text("# root", encoding="utf-8")
+    assert find_codeowners_path(tmp_path) == tmp_path / ".github" / "CODEOWNERS"
+
+
+def test_find_codeowners_path_none_exist(tmp_path: Path) -> None:
+    assert find_codeowners_path(tmp_path) == tmp_path / ".github" / "CODEOWNERS"

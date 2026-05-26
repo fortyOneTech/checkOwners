@@ -11,9 +11,11 @@ import typer
 from rich.console import Console
 
 from checkowners.analyze import analyze_ownership
-from checkowners.config import load_config
+from checkowners.config import find_codeowners_path, load_config
 from checkowners.drift import detect_drift
 from checkowners.generate import generate_codeowners
+from checkowners.github import get_github_token, map_owners
+from checkowners.models import Config, OwnershipMap
 from checkowners.notify import send_notification
 from checkowners.validate import validate_codeowners
 
@@ -29,6 +31,17 @@ JsonOption = Annotated[
     bool,
     typer.Option("--json", help="Output as JSON."),
 ]
+
+
+def _resolve_github_owners(ownership: OwnershipMap, config: Config) -> OwnershipMap:
+    """Replace emails with GitHub @handles if token is available."""
+    if not config.github.resolve_handles:
+        return ownership
+    token = get_github_token()
+    if not token:
+        return ownership
+    mapped = map_owners(ownership.owners, token)
+    return OwnershipMap(owners=mapped, last_analyzed=ownership.last_analyzed)
 
 
 @app.command()
@@ -67,17 +80,28 @@ def generate(json_output: JsonOption = False) -> None:
     """Generate a CODEOWNERS file from inferred ownership."""
     config = load_config()
     repo_root = Path.cwd()
+    codeowners_path = find_codeowners_path(repo_root)
     try:
         ownership = analyze_ownership(repo_root, config)
     except subprocess.CalledProcessError as exc:
         console.print(f"[red]Git command failed:[/red] {exc}")
         raise typer.Exit(code=1) from None
-    content = generate_codeowners(repo_root, ownership, config)
+    ownership = _resolve_github_owners(ownership, config)
+    token = get_github_token()
+    content = generate_codeowners(
+        repo_root,
+        ownership,
+        config,
+        codeowners_path=codeowners_path,
+        token=token,
+        org=config.github.org,
+    )
+    rel_path = codeowners_path.relative_to(repo_root)
     if json_output:
-        data = {"path": ".github/CODEOWNERS", "content": content}
+        data = {"path": str(rel_path), "content": content}
         typer.echo(json.dumps(data, indent=2))
     else:
-        console.print("[green]Generated .github/CODEOWNERS[/green]")
+        console.print(f"[green]Generated {rel_path}[/green]")
 
 
 @app.command(name="print")
@@ -90,6 +114,7 @@ def print_cmd(json_output: JsonOption = False) -> None:
     except subprocess.CalledProcessError as exc:
         console.print(f"[red]Git command failed:[/red] {exc}")
         raise typer.Exit(code=1) from None
+    ownership = _resolve_github_owners(ownership, config)
     if json_output:
         data = {path: list(owners) for path, owners in sorted(ownership.owners.items())}
         typer.echo(json.dumps(data, indent=2))
@@ -103,7 +128,8 @@ def print_cmd(json_output: JsonOption = False) -> None:
 def validate(json_output: JsonOption = False) -> None:
     """Validate CODEOWNERS file syntax."""
     repo_root = Path.cwd()
-    errors = validate_codeowners(repo_root)
+    codeowners_path = find_codeowners_path(repo_root)
+    errors = validate_codeowners(repo_root, codeowners_path=codeowners_path)
     if json_output:
         data = {
             "valid": len(errors) == 0,
@@ -124,12 +150,14 @@ def drift(json_output: JsonOption = False) -> None:
     """Detect drift between inferred and current CODEOWNERS."""
     config = load_config()
     repo_root = Path.cwd()
+    codeowners_path = find_codeowners_path(repo_root)
     try:
         ownership = analyze_ownership(repo_root, config)
     except subprocess.CalledProcessError as exc:
         console.print(f"[red]Git command failed:[/red] {exc}")
         raise typer.Exit(code=1) from None
-    result = detect_drift(repo_root, ownership, config)
+    ownership = _resolve_github_owners(ownership, config)
+    result = detect_drift(repo_root, ownership, config, codeowners_path=codeowners_path)
     if json_output:
         data = {
             "stale": list(result.stale),
@@ -161,12 +189,14 @@ def notify(json_output: JsonOption = False) -> None:
     """Send webhook notification on drift events."""
     config = load_config()
     repo_root = Path.cwd()
+    codeowners_path = find_codeowners_path(repo_root)
     try:
         ownership = analyze_ownership(repo_root, config)
     except subprocess.CalledProcessError as exc:
         console.print(f"[red]Git command failed:[/red] {exc}")
         raise typer.Exit(code=1) from None
-    result = detect_drift(repo_root, ownership, config)
+    ownership = _resolve_github_owners(ownership, config)
+    result = detect_drift(repo_root, ownership, config, codeowners_path=codeowners_path)
     sent = send_notification(result, config)
     if json_output:
         data = {"sent": sent, "drift_detected": result.drift_detected}
@@ -183,15 +213,26 @@ def sync(json_output: JsonOption = False) -> None:
     """Sync CODEOWNERS with inferred ownership (generate + commit)."""
     config = load_config()
     repo_root = Path.cwd()
+    codeowners_path = find_codeowners_path(repo_root)
     try:
         ownership = analyze_ownership(repo_root, config)
     except subprocess.CalledProcessError as exc:
         console.print(f"[red]Git command failed:[/red] {exc}")
         raise typer.Exit(code=1) from None
-    content = generate_codeowners(repo_root, ownership, config)
+    ownership = _resolve_github_owners(ownership, config)
+    token = get_github_token()
+    content = generate_codeowners(
+        repo_root,
+        ownership,
+        config,
+        codeowners_path=codeowners_path,
+        token=token,
+        org=config.github.org,
+    )
+    rel_path = codeowners_path.relative_to(repo_root)
     try:
         subprocess.run(
-            ["git", "add", ".github/CODEOWNERS"],
+            ["git", "add", str(rel_path)],
             cwd=str(repo_root),
             check=True,
             capture_output=True,
@@ -208,10 +249,10 @@ def sync(json_output: JsonOption = False) -> None:
         console.print(f"[red]Git commit failed:[/red] {exc.stderr.strip()}")
         raise typer.Exit(code=1) from None
     if json_output:
-        data = {"path": ".github/CODEOWNERS", "committed": True, "content": content}
+        data = {"path": str(rel_path), "committed": True, "content": content}
         typer.echo(json.dumps(data, indent=2))
     else:
-        console.print("[green]Generated and committed .github/CODEOWNERS[/green]")
+        console.print(f"[green]Generated and committed {rel_path}[/green]")
 
 
 def main() -> None:

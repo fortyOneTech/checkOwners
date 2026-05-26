@@ -8,25 +8,27 @@ from pathlib import Path
 
 from checkowners.models import Config, DriftResult, OwnershipMap
 
-_CODEOWNERS_PATH = ".github/CODEOWNERS"
+_DEFAULT_CODEOWNERS_PATH = ".github/CODEOWNERS"
 
 
 def detect_drift(
     repo_root: Path,
     ownership: OwnershipMap,
     config: Config,
+    *,
+    codeowners_path: Path | None = None,
 ) -> DriftResult:
     """Compare inferred ownership against current CODEOWNERS."""
-    current = _parse_codeowners(repo_root)
+    target = codeowners_path or (repo_root / _DEFAULT_CODEOWNERS_PATH)
+    current = _parse_codeowners(target)
     inferred = _normalize_inferred(ownership)
     result = _compare(current, inferred, config.drift.mode)
     _write_github_output(result)
     return result
 
 
-def _parse_codeowners(repo_root: Path) -> dict[str, tuple[str, ...]]:
-    """Parse existing CODEOWNERS file into path → owners mapping."""
-    codeowners_path = repo_root / _CODEOWNERS_PATH
+def _parse_codeowners(codeowners_path: Path) -> dict[str, tuple[str, ...]]:
+    """Parse existing CODEOWNERS file into path -> owners mapping."""
     if not codeowners_path.exists():
         return {}
     entries: dict[str, tuple[str, ...]] = {}

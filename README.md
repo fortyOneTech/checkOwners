@@ -1,6 +1,7 @@
 # checkowners
 
-[![PyPI version](https://img.shields.io/pypi/v/checkowners)](https://pypi.org/project/checkowners/)
+[![CI](https://github.com/smusali/checkowners/actions/workflows/ci.yml/badge.svg)](https://github.com/smusali/checkowners/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/checkowners.svg)](https://pypi.org/project/checkowners/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Infer and maintain CODEOWNERS from git history. Drift detection, CI-native JSON output, and GitHub Actions integration.

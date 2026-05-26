@@ -38,12 +38,20 @@ class NotificationsConfig:
 
 
 @dataclass(frozen=True)
+class GithubConfig:
+    org: str = ""
+    resolve_handles: bool = True
+    resolve_teams: bool = True
+
+
+@dataclass(frozen=True)
 class Config:
     analysis: AnalysisConfig = field(default_factory=AnalysisConfig)
     paths: PathsConfig = field(default_factory=PathsConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
     drift: DriftConfig = field(default_factory=DriftConfig)
     notifications: NotificationsConfig = field(default_factory=NotificationsConfig)
+    github: GithubConfig = field(default_factory=GithubConfig)
 
 
 @dataclass(frozen=True)

@@ -27,12 +27,13 @@ All subcommands support `--json` for structured JSON output.
 checkowners/
   cli.py        # Typer app; all subcommands registered here
   analyze.py    # git log + git blame -> OwnershipMap
-  generate.py   # OwnershipMap -> .github/CODEOWNERS writer
+  generate.py   # OwnershipMap -> CODEOWNERS writer (auto-detected path)
   drift.py      # State machine: inferred vs. current diff -> DriftResult
+  github.py     # GitHub API: email->@handle mapping, team resolution
   notify.py     # Webhook POST on drift events
   validate.py   # Syntax-only CODEOWNERS validator
-  config.py     # PyYAML loader for .github/checkowners.yml
-  models.py     # Dataclasses: OwnershipMap, DriftResult, Config
+  config.py     # PyYAML loader, CODEOWNERS path auto-detection
+  models.py     # Dataclasses: OwnershipMap, DriftResult, Config, GithubConfig
   state.py      # ~/.checkowners/state.json reader/writer
 tests/
   test_analyze.py
@@ -43,7 +44,7 @@ tests/
 action.yml      # Composite GitHub Action
 ```
 
-Key data flow: `config.py` loads `.github/checkowners.yml` -> `analyze.py` runs git log/blame -> `models.OwnershipMap` -> `generate.py` writes CODEOWNERS or `drift.py` compares against existing CODEOWNERS -> `models.DriftResult` -> `notify.py` posts webhooks. `state.py` persists inference results to `~/.checkowners/state.json`.
+Key data flow: `config.py` loads `.github/checkowners.yml` + auto-detects CODEOWNERS location -> `analyze.py` runs git log/blame -> `models.OwnershipMap` -> `github.py` maps emails to @handles and resolves teams (via GITHUB_TOKEN) -> `generate.py` writes CODEOWNERS or `drift.py` compares against existing CODEOWNERS -> `models.DriftResult` -> `notify.py` posts webhooks. CODEOWNERS auto-detected at: `.github/CODEOWNERS`, `CODEOWNERS` (root), or `docs/CODEOWNERS`.
 
 ## Conventions
 
@@ -67,7 +68,7 @@ Key data flow: `config.py` loads `.github/checkowners.yml` -> `analyze.py` runs 
 
 - Add LLM or AI dependencies; checkOwners is pure-git inference only
 - Write to `.github/CODEOWNERS` without the machine-generated header
-- Make external network calls except in `notify.py` (webhook POST) and `action.yml` (GitHub API)
+- Make external network calls except in `github.py` (GitHub API), `notify.py` (webhook POST), and `action.yml`
 - Use classes except dataclasses in `models.py`
 - Skip type annotations on any function signature
 - Modify `state.json` schema without bumping the schema version field

@@ -112,19 +112,31 @@ def test_detect_drift_both_mode(tmp_path: Path) -> None:
 def test_parse_codeowners_skips_comments(tmp_path: Path) -> None:
     content = "# header comment\n\n/src/main.py alice@example.com\n# another comment\n"
     _write_codeowners(tmp_path, content)
-    result = _parse_codeowners(tmp_path)
+    result = _parse_codeowners(tmp_path / ".github" / "CODEOWNERS")
     assert result == {"/src/main.py": ("alice@example.com",)}
 
 
 def test_parse_codeowners_multiple_owners(tmp_path: Path) -> None:
     _write_codeowners(tmp_path, "/src/api.py alice@example.com bob@example.com\n")
-    result = _parse_codeowners(tmp_path)
+    result = _parse_codeowners(tmp_path / ".github" / "CODEOWNERS")
     assert result["/src/api.py"] == ("alice@example.com", "bob@example.com")
 
 
 def test_parse_codeowners_missing_file(tmp_path: Path) -> None:
-    result = _parse_codeowners(tmp_path)
+    result = _parse_codeowners(tmp_path / ".github" / "CODEOWNERS")
     assert result == {}
+
+
+def test_detect_drift_with_custom_codeowners_path(tmp_path: Path) -> None:
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    (docs_dir / "CODEOWNERS").write_text("/src/main.py alice@example.com\n", encoding="utf-8")
+    ownership = _make_ownership({"src/main.py": ("alice@example.com",)})
+    config = Config(drift=DriftConfig(mode="both"))
+    result = detect_drift(
+        tmp_path, ownership, config, codeowners_path=docs_dir / "CODEOWNERS"
+    )
+    assert result.drift_detected is False
 
 
 def test_normalize_inferred_adds_slash() -> None:

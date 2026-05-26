@@ -11,12 +11,30 @@ from checkowners.models import (
     AnalysisConfig,
     Config,
     DriftConfig,
+    GithubConfig,
     NotificationsConfig,
     OutputConfig,
     PathsConfig,
 )
 
 CONFIG_FILENAME = ".github/checkowners.yml"
+
+_CODEOWNERS_CANDIDATES: tuple[str, ...] = (
+    ".github/CODEOWNERS",
+    "CODEOWNERS",
+    "docs/CODEOWNERS",
+)
+
+_DEFAULT_CODEOWNERS_PATH = ".github/CODEOWNERS"
+
+
+def find_codeowners_path(repo_root: Path) -> Path:
+    """Locate existing CODEOWNERS file, checking all GitHub-supported locations."""
+    for candidate in _CODEOWNERS_CANDIDATES:
+        path = repo_root / candidate
+        if path.exists():
+            return path
+    return repo_root / _DEFAULT_CODEOWNERS_PATH
 
 
 def load_config(repo_root: Path | None = None) -> Config:
@@ -50,6 +68,8 @@ def _merge_config(raw: dict[str, Any]) -> Config:
         kwargs["drift"] = _build_drift_config(raw["drift"])
     if "notifications" in raw and isinstance(raw["notifications"], dict):
         kwargs["notifications"] = _build_notifications_config(raw["notifications"])
+    if "github" in raw and isinstance(raw["github"], dict):
+        kwargs["github"] = _build_github_config(raw["github"])
     return Config(**kwargs)
 
 
@@ -96,3 +116,14 @@ def _build_notifications_config(data: dict[str, Any]) -> NotificationsConfig:
     if "include_unchanged" in data:
         kwargs["include_unchanged"] = bool(data["include_unchanged"])
     return NotificationsConfig(**kwargs)
+
+
+def _build_github_config(data: dict[str, Any]) -> GithubConfig:
+    kwargs: dict[str, Any] = {}
+    if "org" in data:
+        kwargs["org"] = str(data["org"])
+    if "resolve_handles" in data:
+        kwargs["resolve_handles"] = bool(data["resolve_handles"])
+    if "resolve_teams" in data:
+        kwargs["resolve_teams"] = bool(data["resolve_teams"])
+    return GithubConfig(**kwargs)

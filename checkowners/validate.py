@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-_CODEOWNERS_PATH = ".github/CODEOWNERS"
+_DEFAULT_CODEOWNERS_PATH = ".github/CODEOWNERS"
 _OWNER_PATTERN = re.compile(r"^(@[\w./-]+|[\w.+-]+@[\w.-]+)$")
 
 
@@ -17,12 +17,16 @@ class ValidationError:
     message: str
 
 
-def validate_codeowners(repo_root: Path) -> list[ValidationError]:
+def validate_codeowners(
+    repo_root: Path,
+    *,
+    codeowners_path: Path | None = None,
+) -> list[ValidationError]:
     """Validate CODEOWNERS syntax and return a list of errors."""
-    codeowners_path = repo_root / _CODEOWNERS_PATH
-    if not codeowners_path.exists():
+    target = codeowners_path or (repo_root / _DEFAULT_CODEOWNERS_PATH)
+    if not target.exists():
         return [ValidationError(line_number=0, line="", message="CODEOWNERS file not found")]
-    content = codeowners_path.read_text(encoding="utf-8")
+    content = target.read_text(encoding="utf-8")
     return _validate_lines(content)
 
 

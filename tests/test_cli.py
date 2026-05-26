@@ -28,6 +28,11 @@ _DRIFT_DETECTED = DriftResult(
     drift_detected=True,
 )
 _NO_DRIFT = DriftResult(stale=(), missing=(), changed=(), drift_detected=False)
+_MOCK_TOKEN = patch("checkowners.cli.get_github_token", return_value="")
+_MOCK_PATH = patch(
+    "checkowners.cli.find_codeowners_path",
+    return_value=Path.cwd() / ".github" / "CODEOWNERS",
+)
 
 
 # --- analyze ---
@@ -67,10 +72,12 @@ def test_analyze_git_error() -> None:
 # --- generate ---
 
 
-def test_generate_rich(tmp_path: Path) -> None:
+def test_generate_rich() -> None:
     with (
         patch("checkowners.cli.analyze_ownership", return_value=_OWNERSHIP),
         patch("checkowners.cli.generate_codeowners", return_value="content"),
+        _MOCK_PATH,
+        _MOCK_TOKEN,
     ):
         result = runner.invoke(app, ["generate"])
     assert result.exit_code == 0
@@ -81,18 +88,23 @@ def test_generate_json() -> None:
     with (
         patch("checkowners.cli.analyze_ownership", return_value=_OWNERSHIP),
         patch("checkowners.cli.generate_codeowners", return_value="content"),
+        _MOCK_PATH,
+        _MOCK_TOKEN,
     ):
         result = runner.invoke(app, ["generate", "--json"])
     assert result.exit_code == 0
     data = json.loads(result.stdout)
-    assert data["path"] == ".github/CODEOWNERS"
+    assert "CODEOWNERS" in data["path"]
 
 
 # --- print ---
 
 
 def test_print_json() -> None:
-    with patch("checkowners.cli.analyze_ownership", return_value=_OWNERSHIP):
+    with (
+        patch("checkowners.cli.analyze_ownership", return_value=_OWNERSHIP),
+        _MOCK_TOKEN,
+    ):
         result = runner.invoke(app, ["print", "--json"])
     assert result.exit_code == 0
     data = json.loads(result.stdout)
@@ -100,7 +112,10 @@ def test_print_json() -> None:
 
 
 def test_print_plain() -> None:
-    with patch("checkowners.cli.analyze_ownership", return_value=_OWNERSHIP):
+    with (
+        patch("checkowners.cli.analyze_ownership", return_value=_OWNERSHIP),
+        _MOCK_TOKEN,
+    ):
         result = runner.invoke(app, ["print"])
     assert result.exit_code == 0
     assert "src/main.py" in result.stdout
@@ -110,8 +125,11 @@ def test_print_plain() -> None:
 # --- validate ---
 
 
-def test_validate_valid(tmp_path: Path) -> None:
-    with patch("checkowners.cli.validate_codeowners", return_value=[]):
+def test_validate_valid() -> None:
+    with (
+        patch("checkowners.cli.validate_codeowners", return_value=[]),
+        _MOCK_PATH,
+    ):
         result = runner.invoke(app, ["validate"])
     assert result.exit_code == 0
     assert "valid" in result.stdout
@@ -121,14 +139,20 @@ def test_validate_errors() -> None:
     from checkowners.validate import ValidationError
 
     errors = [ValidationError(line_number=3, line="bad", message="bad line")]
-    with patch("checkowners.cli.validate_codeowners", return_value=errors):
+    with (
+        patch("checkowners.cli.validate_codeowners", return_value=errors),
+        _MOCK_PATH,
+    ):
         result = runner.invoke(app, ["validate"])
     assert result.exit_code == 1
     assert "Line 3" in result.stdout
 
 
 def test_validate_json_valid() -> None:
-    with patch("checkowners.cli.validate_codeowners", return_value=[]):
+    with (
+        patch("checkowners.cli.validate_codeowners", return_value=[]),
+        _MOCK_PATH,
+    ):
         result = runner.invoke(app, ["validate", "--json"])
     assert result.exit_code == 0
     data = json.loads(result.stdout)
@@ -139,7 +163,10 @@ def test_validate_json_errors() -> None:
     from checkowners.validate import ValidationError
 
     errors = [ValidationError(line_number=1, line="x", message="oops")]
-    with patch("checkowners.cli.validate_codeowners", return_value=errors):
+    with (
+        patch("checkowners.cli.validate_codeowners", return_value=errors),
+        _MOCK_PATH,
+    ):
         result = runner.invoke(app, ["validate", "--json"])
     assert result.exit_code == 0
     data = json.loads(result.stdout)
@@ -154,6 +181,8 @@ def test_drift_no_drift() -> None:
     with (
         patch("checkowners.cli.analyze_ownership", return_value=_OWNERSHIP),
         patch("checkowners.cli.detect_drift", return_value=_NO_DRIFT),
+        _MOCK_PATH,
+        _MOCK_TOKEN,
     ):
         result = runner.invoke(app, ["drift"])
     assert result.exit_code == 0
@@ -164,6 +193,8 @@ def test_drift_detected() -> None:
     with (
         patch("checkowners.cli.analyze_ownership", return_value=_OWNERSHIP),
         patch("checkowners.cli.detect_drift", return_value=_DRIFT_DETECTED),
+        _MOCK_PATH,
+        _MOCK_TOKEN,
     ):
         result = runner.invoke(app, ["drift"])
     assert result.exit_code == 0
@@ -174,6 +205,8 @@ def test_drift_json() -> None:
     with (
         patch("checkowners.cli.analyze_ownership", return_value=_OWNERSHIP),
         patch("checkowners.cli.detect_drift", return_value=_DRIFT_DETECTED),
+        _MOCK_PATH,
+        _MOCK_TOKEN,
     ):
         result = runner.invoke(app, ["drift", "--json"])
     assert result.exit_code == 0
@@ -189,6 +222,8 @@ def test_notify_sent() -> None:
         patch("checkowners.cli.analyze_ownership", return_value=_OWNERSHIP),
         patch("checkowners.cli.detect_drift", return_value=_DRIFT_DETECTED),
         patch("checkowners.cli.send_notification", return_value=True),
+        _MOCK_PATH,
+        _MOCK_TOKEN,
     ):
         result = runner.invoke(app, ["notify"])
     assert result.exit_code == 0
@@ -200,6 +235,8 @@ def test_notify_skipped() -> None:
         patch("checkowners.cli.analyze_ownership", return_value=_OWNERSHIP),
         patch("checkowners.cli.detect_drift", return_value=_NO_DRIFT),
         patch("checkowners.cli.send_notification", return_value=False),
+        _MOCK_PATH,
+        _MOCK_TOKEN,
     ):
         result = runner.invoke(app, ["notify"])
     assert result.exit_code == 0
@@ -211,6 +248,8 @@ def test_notify_json() -> None:
         patch("checkowners.cli.analyze_ownership", return_value=_OWNERSHIP),
         patch("checkowners.cli.detect_drift", return_value=_DRIFT_DETECTED),
         patch("checkowners.cli.send_notification", return_value=True),
+        _MOCK_PATH,
+        _MOCK_TOKEN,
     ):
         result = runner.invoke(app, ["notify", "--json"])
     assert result.exit_code == 0
@@ -226,6 +265,8 @@ def test_sync_rich() -> None:
         patch("checkowners.cli.analyze_ownership", return_value=_OWNERSHIP),
         patch("checkowners.cli.generate_codeowners", return_value="content"),
         patch("checkowners.cli.subprocess.run") as mock_run,
+        _MOCK_PATH,
+        _MOCK_TOKEN,
     ):
         mock_run.return_value = MagicMock(returncode=0)
         result = runner.invoke(app, ["sync"])
@@ -238,6 +279,8 @@ def test_sync_json() -> None:
         patch("checkowners.cli.analyze_ownership", return_value=_OWNERSHIP),
         patch("checkowners.cli.generate_codeowners", return_value="content"),
         patch("checkowners.cli.subprocess.run") as mock_run,
+        _MOCK_PATH,
+        _MOCK_TOKEN,
     ):
         mock_run.return_value = MagicMock(returncode=0)
         result = runner.invoke(app, ["sync", "--json"])
@@ -254,6 +297,8 @@ def test_sync_git_commit_error() -> None:
             "checkowners.cli.subprocess.run",
             side_effect=subprocess.CalledProcessError(1, "git", stderr="nothing to commit"),
         ),
+        _MOCK_PATH,
+        _MOCK_TOKEN,
     ):
         result = runner.invoke(app, ["sync"])
     assert result.exit_code == 1

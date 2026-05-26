@@ -89,3 +89,9 @@ def test_validate_org_team_owner(tmp_path: Path) -> None:
     _write_codeowners(tmp_path, "/src/ @org/team-name\n")
     errors = validate_codeowners(tmp_path)
     assert errors == []
+
+
+def test_validate_root_codeowners(tmp_path: Path) -> None:
+    (tmp_path / "CODEOWNERS").write_text("/src/ @alice\n", encoding="utf-8")
+    errors = validate_codeowners(tmp_path, codeowners_path=tmp_path / "CODEOWNERS")
+    assert errors == []

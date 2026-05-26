@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "checkowners"
-version = "0.1.0"
+version = "0.1.1"
 description = "Infer and maintain CODEOWNERS from git history. Drift detection, CI-native JSON output, and GitHub Actions integration."
 readme = "README.md"
 license = "MIT"

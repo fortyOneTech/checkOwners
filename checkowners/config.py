@@ -182,6 +182,13 @@ def _build_notifications_config(data: dict[str, Any]) -> NotificationsConfig:
 
 
 def _build_github_config(data: dict[str, Any]) -> GithubConfig:
+    if "token" in data:
+        msg = (
+            "github.token is not accepted in checkowners.yml: this file is "
+            "typically committed to git, so storing a token there leaks the "
+            "secret. Set the GITHUB_TOKEN environment variable instead."
+        )
+        raise ValueError(msg)
     kwargs: dict[str, Any] = {}
     if "org" in data:
         kwargs["org"] = str(data["org"])
@@ -191,6 +198,4 @@ def _build_github_config(data: dict[str, Any]) -> GithubConfig:
         kwargs["resolve_teams"] = bool(data["resolve_teams"])
     if "api_enabled" in data:
         kwargs["api_enabled"] = bool(data["api_enabled"])
-    if "token" in data:
-        kwargs["token"] = str(data["token"])
     return GithubConfig(**kwargs)

@@ -56,7 +56,7 @@ def _resolve_github_owners(ownership: OwnershipMap, config: Config) -> Ownership
     """Replace email handles with GitHub @handles when a token is available."""
     if not config.github.resolve_handles:
         return ownership
-    token = config.github.token or get_github_token()
+    token = get_github_token()
     if not token:
         return ownership
     handle_map = ownership.handles_only()
@@ -205,7 +205,7 @@ def generate(json_output: JsonOption = False) -> None:
     repo_root = Path.cwd()
     codeowners_path = find_codeowners_path(repo_root)
     ownership = _run_analyze(config, repo_root)
-    token = config.github.token or get_github_token()
+    token = get_github_token()
     content = generate_codeowners(
         repo_root,
         ownership,
@@ -356,7 +356,7 @@ def sync(json_output: JsonOption = False) -> None:
     repo_root = Path.cwd()
     codeowners_path = find_codeowners_path(repo_root)
     ownership = _run_analyze(config, repo_root)
-    token = config.github.token or get_github_token()
+    token = get_github_token()
     content = generate_codeowners(
         repo_root,
         ownership,

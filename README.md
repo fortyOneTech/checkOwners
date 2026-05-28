@@ -107,8 +107,9 @@ github:
   resolve_handles: true       # email -> @handle via search API
   resolve_teams: true         # collapse owner sets to a @org/team when possible
   api_enabled: false          # gate review_weight + topology/balance API features
-  token: ""                   # falls back to $GITHUB_TOKEN
 ```
+
+The GitHub token is **never** read from this file — set the `GITHUB_TOKEN` environment variable instead. `checkowners.yml` is committed to your repo, so storing a token here would push it to GitHub. `load_config` raises a clear error if `github.token` is present.
 
 ## Confidence scoring
 
@@ -198,7 +199,7 @@ Without a token you still get confidence-scored ownership, drift detection, bus 
 
 **What environment variable holds the token?**
 
-`GITHUB_TOKEN` (not `GITHUB_API_KEY`). Or set `github.token` in `.github/checkowners.yml`. The config value wins when both are present.
+`GITHUB_TOKEN` (not `GITHUB_API_KEY`). This is the **only** supported way to provide a token — `github.token` is intentionally **not** accepted in `checkowners.yml` because that file gets committed to git and storing a secret there would publish it to GitHub. `load_config` refuses to load a config that contains `github.token` so a misconfigured repo fails fast instead of silently leaking.
 
 ```bash
 export GITHUB_TOKEN=ghp_...

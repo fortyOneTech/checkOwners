@@ -113,21 +113,22 @@ def test_cluster_disconnected_subgraphs() -> None:
 
 
 def test_declared_teams_from_github_disabled_returns_none() -> None:
-    config = Config(github=GithubConfig(api_enabled=False, token="ghp", org="myorg"))
-    assert declared_teams_from_github(config) is None
+    config = Config(github=GithubConfig(api_enabled=False, org="myorg"))
+    with patch.dict("os.environ", {"GITHUB_TOKEN": "ghp_test"}):
+        assert declared_teams_from_github(config) is None
 
 
 def test_declared_teams_from_github_no_token_returns_none() -> None:
-    config = Config(github=GithubConfig(api_enabled=True, token="", org="myorg"))
-    assert declared_teams_from_github(config) is None
+    config = Config(github=GithubConfig(api_enabled=True, org="myorg"))
+    with patch.dict("os.environ", {}, clear=True):
+        assert declared_teams_from_github(config) is None
 
 
 def test_declared_teams_from_github_success() -> None:
-    config = Config(
-        github=GithubConfig(api_enabled=True, token="ghp_test", org="myorg")
-    )
+    config = Config(github=GithubConfig(api_enabled=True, org="myorg"))
     mock_client = MagicMock()
     with (
+        patch.dict("os.environ", {"GITHUB_TOKEN": "ghp_test"}),
         patch("checkowners.github.get_github_client", return_value=mock_client),
         patch(
             "checkowners.github._get_org_teams",

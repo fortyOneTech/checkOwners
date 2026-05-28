@@ -85,7 +85,7 @@ def _gather_counts(
     ownership: OwnershipMap,
     config: Config,
 ) -> tuple[dict[str, int], str]:
-    if config.github.api_enabled and config.github.token and config.github.org:
+    if config.github.api_enabled and config.github.org:
         counts = _gather_from_github(config)
         if counts:
             return counts, "github_api"
@@ -102,10 +102,16 @@ def _gather_from_authorship(ownership: OwnershipMap) -> dict[str, int]:
 
 def _gather_from_github(config: Config) -> dict[str, int]:
     try:
-        from checkowners.github import get_github_client  # noqa: PLC0415
+        from checkowners.github import (  # noqa: PLC0415
+            get_github_client,
+            get_github_token,
+        )
     except ImportError:
         return {}
-    client = get_github_client(config.github.token)
+    token = get_github_token()
+    if not token:
+        return {}
+    client = get_github_client(token)
     if client is None:
         return {}
     return _fetch_review_counts(client, config.github.org)

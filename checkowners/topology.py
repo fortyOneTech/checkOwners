@@ -145,10 +145,14 @@ def _fetch_teams(github: GithubConfig) -> dict[str, frozenset[str]] | None:
     if not github.org:
         return None
     try:
-        from checkowners.github import _get_org_teams, get_github_client  # noqa: PLC0415
+        from checkowners.github import (  # noqa: PLC0415
+            _get_org_teams,
+            get_github_client,
+            get_github_token,
+        )
     except ImportError:
         return None
-    token = github.token
+    token = get_github_token()
     if not token:
         return None
     client = get_github_client(token)

@@ -102,7 +102,6 @@ github:
   resolve_handles: false
   resolve_teams: false
   api_enabled: true
-  token: ghp_test
 """
     root = _write_config(tmp_path, content)
     cfg = load_config(repo_root=root)
@@ -133,7 +132,6 @@ github:
     assert cfg.github.resolve_handles is False
     assert cfg.github.resolve_teams is False
     assert cfg.github.api_enabled is True
-    assert cfg.github.token == "ghp_test"
 
 
 def test_load_config_invalid_yaml(tmp_path: Path) -> None:
@@ -197,6 +195,12 @@ def test_load_config_github_section(tmp_path: Path) -> None:
     assert cfg.github.resolve_teams is False
     assert cfg.github.resolve_handles is True
     assert cfg.github.api_enabled is False
+
+
+def test_load_config_github_token_rejected(tmp_path: Path) -> None:
+    root = _write_config(tmp_path, "github:\n  token: ghp_secret\n")
+    with pytest.raises(ValueError, match="github.token is not accepted"):
+        load_config(repo_root=root)
 
 
 def test_load_config_scoring_section(tmp_path: Path) -> None:

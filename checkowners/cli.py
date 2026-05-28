@@ -14,19 +14,22 @@ from rich.table import Table
 
 from checkowners.analyze import analyze_ownership
 from checkowners.config import find_codeowners_path, load_config
+from checkowners.decay import DecayReport, detect_decay
 from checkowners.drift import detect_drift
+from checkowners.expertise import rank_expertise
 from checkowners.generate import generate_codeowners
 from checkowners.github import get_github_token, map_owners
 from checkowners.models import (
     Config,
     DriftEntry,
     DriftResult,
+    ExpertiseRank,
     OwnerEntry,
     OwnershipMap,
     PathOwnership,
 )
 from checkowners.notify import compute_severity, send_notification
-from checkowners.state import write_state
+from checkowners.state import load_ownership, write_state
 from checkowners.validate import validate_codeowners
 
 app = typer.Typer(
@@ -152,6 +155,23 @@ def _run_analyze(config: Config, repo_root: Path) -> OwnershipMap:
     ownership = _resolve_github_owners(ownership, config)
     write_state(ownership)
     return ownership
+
+
+def _load_or_analyze(config: Config, repo_root: Path) -> OwnershipMap:
+    """Use cached state when available; otherwise re-analyze."""
+    cached = load_ownership()
+    if cached is not None:
+        return cached
+    return _run_analyze(config, repo_root)
+
+
+def _expertise_rank_payload(rank: ExpertiseRank) -> dict[str, Any]:
+    return {
+        "handle": rank.handle,
+        "confidence": round(rank.confidence, 4),
+        "commits": rank.commits,
+        "last_commit": rank.last_commit.isoformat() if rank.last_commit else None,
+    }
 
 
 @app.command()
@@ -360,6 +380,92 @@ def sync(json_output: JsonOption = False) -> None:
         typer.echo(json.dumps(data, indent=2))
     else:
         console.print(f"[green]Generated and committed {rel_path}[/green]")
+
+
+def _decay_report_payload(report: DecayReport) -> dict[str, Any]:
+    return {
+        "handle": report.warning.handle,
+        "path": report.warning.path,
+        "days_since_last_commit": report.warning.days_since_last_commit,
+        "last_commit": report.warning.last_commit.isoformat(),
+        "historical_confidence": round(report.warning.historical_confidence, 4),
+        "recommended_transfer": report.recommended_transfer,
+        "departed": report.departed,
+    }
+
+
+@app.command()
+def decay(json_output: JsonOption = False) -> None:
+    """Detect contributors whose expertise on a path has gone stale."""
+    config = load_config()
+    ownership = _load_or_analyze(config, Path.cwd())
+    reports = detect_decay(ownership, config)
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {"reports": [_decay_report_payload(r) for r in reports]},
+                indent=2,
+            )
+        )
+        return
+    if not reports:
+        console.print("[green]No decaying expertise detected.[/green]")
+        return
+    table = Table(title="Expertise Decay")
+    table.add_column("Path", style="cyan")
+    table.add_column("Handle")
+    table.add_column("Days", justify="right")
+    table.add_column("Historical Δ", justify="right")
+    table.add_column("Status")
+    table.add_column("Recommended transfer")
+    for report in reports:
+        status = "[red]departed[/red]" if report.departed else "[yellow]dormant[/yellow]"
+        target = report.recommended_transfer or "[dim]triage[/dim]"
+        table.add_row(
+            report.warning.path,
+            report.warning.handle,
+            str(report.warning.days_since_last_commit),
+            f"{report.warning.historical_confidence:.2f}",
+            status,
+            target,
+        )
+    console.print(table)
+
+
+@app.command()
+def expertise(
+    path: Annotated[str, typer.Argument(help="Path or glob to rank expertise for.")],
+    json_output: JsonOption = False,
+) -> None:
+    """Show expertise ranking for a specific path."""
+    config = load_config()
+    ownership = _load_or_analyze(config, Path.cwd())
+    ranking = rank_expertise(ownership, path)
+    if json_output:
+        data = {
+            "path": path,
+            "ranking": [_expertise_rank_payload(r) for r in ranking],
+        }
+        typer.echo(json.dumps(data, indent=2))
+        return
+    if not ranking:
+        console.print(f"[yellow]No experts found for {path!r}.[/yellow]")
+        return
+    table = Table(title=f"Expertise: {path}")
+    table.add_column("#", justify="right")
+    table.add_column("Handle", style="cyan")
+    table.add_column("Confidence", justify="right")
+    table.add_column("Commits", justify="right")
+    table.add_column("Last commit", justify="right")
+    for idx, rank in enumerate(ranking, start=1):
+        table.add_row(
+            str(idx),
+            f"[{_confidence_style(rank.confidence)}]{rank.handle}[/]",
+            f"{rank.confidence:.2f}",
+            str(rank.commits),
+            _format_last_commit(rank.last_commit),
+        )
+    console.print(table)
 
 
 def main() -> None:

@@ -34,8 +34,12 @@ def _validate_lines(content: str) -> list[ValidationError]:
     """Validate each line of CODEOWNERS content."""
     errors: list[ValidationError] = []
     for line_number, raw_line in enumerate(content.splitlines(), start=1):
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        # Strip inline comment so confidence annotations don't fail validation.
+        line = stripped.split("#", 1)[0].strip()
+        if not line:
             continue
         line_errors = _validate_entry(line_number, line)
         errors.extend(line_errors)

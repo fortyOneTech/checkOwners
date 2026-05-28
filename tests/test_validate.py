@@ -95,3 +95,12 @@ def test_validate_root_codeowners(tmp_path: Path) -> None:
     (tmp_path / "CODEOWNERS").write_text("/src/ @alice\n", encoding="utf-8")
     errors = validate_codeowners(tmp_path, codeowners_path=tmp_path / "CODEOWNERS")
     assert errors == []
+
+
+def test_validate_strips_inline_confidence_comment(tmp_path: Path) -> None:
+    _write_codeowners(
+        tmp_path,
+        "/src/main.py alice@example.com  # alice@example.com(0.92)\n",
+    )
+    errors = validate_codeowners(tmp_path)
+    assert errors == []

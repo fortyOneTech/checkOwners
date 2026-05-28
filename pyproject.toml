@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "checkowners"
-version = "0.2.0"
-description = "Infer and maintain CODEOWNERS from git history. Drift detection, CI-native JSON output, and GitHub Actions integration."
+version = "0.3.0"
+description = "Infer CODEOWNERS from git history with confidence scoring, knowledge graphs, expertise decay detection, bus factor analysis, and team topology inference. CI-native."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
@@ -19,6 +19,12 @@ keywords = [
     "drift-detection",
     "cli",
     "github-actions",
+    "knowledge-graph",
+    "bus-factor",
+    "expertise-decay",
+    "team-topology",
+    "platform-engineering",
+    "code-review",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -30,6 +36,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Version Control :: Git",
     "Typing :: Typed",
 ]
 dependencies = [
@@ -39,6 +46,16 @@ dependencies = [
     "pygithub>=2.0.0",
     "pyyaml>=6.0",
 ]
+
+[project.optional-dependencies]
+graph = [
+    "networkx>=3.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/smusali/checkowners"
+Issues = "https://github.com/smusali/checkowners/issues"
+Source = "https://github.com/smusali/checkowners"
 
 [project.scripts]
 checkowners = "checkowners.cli:main"

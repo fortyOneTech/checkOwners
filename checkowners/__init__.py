@@ -1,3 +1,3 @@
-"""checkOwners: Infer and maintain CODEOWNERS from git history."""
+"""checkOwners: Infer CODEOWNERS from git history with confidence scoring."""
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"

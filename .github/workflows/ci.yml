@@ -43,7 +43,8 @@ jobs:
         run: |
           pip install hatch
           hatch build
-          pip install "dist/checkowners-"*"-py3-none-any.whl[graph]"
+          wheel=$(ls dist/checkowners-*-py3-none-any.whl)
+          pip install "${wheel}[graph]"
 
       - name: Smoke-test new commands
         run: |

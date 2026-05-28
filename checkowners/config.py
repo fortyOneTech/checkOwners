@@ -3,18 +3,23 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
 from checkowners.models import (
     AnalysisConfig,
+    BusFactorConfig,
     Config,
+    DecayConfig,
     DriftConfig,
+    DriftMode,
     GithubConfig,
     NotificationsConfig,
     OutputConfig,
     PathsConfig,
+    ScoringConfig,
+    Severity,
 )
 
 CONFIG_FILENAME = ".github/checkowners.yml"
@@ -26,6 +31,9 @@ _CODEOWNERS_CANDIDATES: tuple[str, ...] = (
 )
 
 _DEFAULT_CODEOWNERS_PATH = ".github/CODEOWNERS"
+
+_VALID_DRIFT_MODES: frozenset[str] = frozenset({"commit", "repo", "both"})
+_VALID_SEVERITIES: frozenset[str] = frozenset({"low", "medium", "high", "critical"})
 
 
 def find_codeowners_path(repo_root: Path) -> Path:
@@ -57,19 +65,22 @@ def _resolve_config_path(repo_root: Path | None) -> Path:
 
 
 def _merge_config(raw: dict[str, Any]) -> Config:
+    builders: dict[str, tuple[str, Any]] = {
+        "analysis": ("analysis", _build_analysis_config),
+        "scoring": ("scoring", _build_scoring_config),
+        "decay": ("decay", _build_decay_config),
+        "bus_factor": ("bus_factor", _build_bus_factor_config),
+        "paths": ("paths", _build_paths_config),
+        "output": ("output", _build_output_config),
+        "drift": ("drift", _build_drift_config),
+        "notifications": ("notifications", _build_notifications_config),
+        "github": ("github", _build_github_config),
+    }
     kwargs: dict[str, Any] = {}
-    if "analysis" in raw and isinstance(raw["analysis"], dict):
-        kwargs["analysis"] = _build_analysis_config(raw["analysis"])
-    if "paths" in raw and isinstance(raw["paths"], dict):
-        kwargs["paths"] = _build_paths_config(raw["paths"])
-    if "output" in raw and isinstance(raw["output"], dict):
-        kwargs["output"] = _build_output_config(raw["output"])
-    if "drift" in raw and isinstance(raw["drift"], dict):
-        kwargs["drift"] = _build_drift_config(raw["drift"])
-    if "notifications" in raw and isinstance(raw["notifications"], dict):
-        kwargs["notifications"] = _build_notifications_config(raw["notifications"])
-    if "github" in raw and isinstance(raw["github"], dict):
-        kwargs["github"] = _build_github_config(raw["github"])
+    for key, (field_name, builder) in builders.items():
+        section = raw.get(key)
+        if isinstance(section, dict):
+            kwargs[field_name] = builder(section)
     return Config(**kwargs)
 
 
@@ -81,7 +92,42 @@ def _build_analysis_config(data: dict[str, Any]) -> AnalysisConfig:
         kwargs["min_commits"] = int(data["min_commits"])
     if "top_n_owners" in data:
         kwargs["top_n_owners"] = int(data["top_n_owners"])
+    if "confidence_threshold" in data:
+        kwargs["confidence_threshold"] = float(data["confidence_threshold"])
     return AnalysisConfig(**kwargs)
+
+
+def _build_scoring_config(data: dict[str, Any]) -> ScoringConfig:
+    kwargs: dict[str, Any] = {}
+    if "recency_half_life_days" in data:
+        kwargs["recency_half_life_days"] = int(data["recency_half_life_days"])
+    if "recency_weight" in data:
+        kwargs["recency_weight"] = float(data["recency_weight"])
+    if "frequency_weight" in data:
+        kwargs["frequency_weight"] = float(data["frequency_weight"])
+    if "blame_weight" in data:
+        kwargs["blame_weight"] = float(data["blame_weight"])
+    if "review_weight" in data:
+        kwargs["review_weight"] = float(data["review_weight"])
+    return ScoringConfig(**kwargs)
+
+
+def _build_decay_config(data: dict[str, Any]) -> DecayConfig:
+    kwargs: dict[str, Any] = {}
+    if "threshold_days" in data:
+        kwargs["threshold_days"] = int(data["threshold_days"])
+    if "alert_on_decay" in data:
+        kwargs["alert_on_decay"] = bool(data["alert_on_decay"])
+    return DecayConfig(**kwargs)
+
+
+def _build_bus_factor_config(data: dict[str, Any]) -> BusFactorConfig:
+    kwargs: dict[str, Any] = {}
+    if "critical_threshold" in data:
+        kwargs["critical_threshold"] = int(data["critical_threshold"])
+    if "warn_threshold" in data:
+        kwargs["warn_threshold"] = int(data["warn_threshold"])
+    return BusFactorConfig(**kwargs)
 
 
 def _build_paths_config(data: dict[str, Any]) -> PathsConfig:
@@ -97,15 +143,23 @@ def _build_output_config(data: dict[str, Any]) -> OutputConfig:
         kwargs["header"] = str(data["header"])
     if "include_unowned" in data:
         kwargs["include_unowned"] = bool(data["include_unowned"])
+    if "include_confidence" in data:
+        kwargs["include_confidence"] = bool(data["include_confidence"])
     return OutputConfig(**kwargs)
 
 
 def _build_drift_config(data: dict[str, Any]) -> DriftConfig:
     kwargs: dict[str, Any] = {}
     if "mode" in data:
-        kwargs["mode"] = str(data["mode"])
+        mode_str = str(data["mode"])
+        if mode_str not in _VALID_DRIFT_MODES:
+            msg = f"Invalid drift.mode: {mode_str!r}; expected one of {sorted(_VALID_DRIFT_MODES)}"
+            raise ValueError(msg)
+        kwargs["mode"] = cast(DriftMode, mode_str)
     if "compare_to" in data:
         kwargs["compare_to"] = str(data["compare_to"])
+    if "min_confidence_delta" in data:
+        kwargs["min_confidence_delta"] = float(data["min_confidence_delta"])
     return DriftConfig(**kwargs)
 
 
@@ -115,6 +169,15 @@ def _build_notifications_config(data: dict[str, Any]) -> NotificationsConfig:
         kwargs["webhook_url"] = str(data["webhook_url"])
     if "include_unchanged" in data:
         kwargs["include_unchanged"] = bool(data["include_unchanged"])
+    if "severity_threshold" in data:
+        sev_str = str(data["severity_threshold"])
+        if sev_str not in _VALID_SEVERITIES:
+            msg = (
+                f"Invalid notifications.severity_threshold: {sev_str!r}; "
+                f"expected one of {sorted(_VALID_SEVERITIES)}"
+            )
+            raise ValueError(msg)
+        kwargs["severity_threshold"] = cast(Severity, sev_str)
     return NotificationsConfig(**kwargs)
 
 
@@ -126,4 +189,8 @@ def _build_github_config(data: dict[str, Any]) -> GithubConfig:
         kwargs["resolve_handles"] = bool(data["resolve_handles"])
     if "resolve_teams" in data:
         kwargs["resolve_teams"] = bool(data["resolve_teams"])
+    if "api_enabled" in data:
+        kwargs["api_enabled"] = bool(data["api_enabled"])
+    if "token" in data:
+        kwargs["token"] = str(data["token"])
     return GithubConfig(**kwargs)

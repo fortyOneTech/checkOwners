@@ -10,6 +10,23 @@ Infer CODEOWNERS from git history with confidence scoring, a knowledge graph, ex
 
 > Ownership is not binary. checkOwners is the first CODEOWNERS tool that treats it as a confidence-scored spectrum and surfaces the second-order risks (bus factor, expertise decay, team topology) that come with it.
 
+## How it works
+
+```mermaid
+flowchart LR
+    Git[Git history] --> Analyze[analyze]
+    Analyze --> State[(state.json)]
+    State --> Generate[generate]
+    State --> Drift[drift]
+    State --> Bus[bus-factor]
+    State --> Decay[decay]
+    State --> Topology[topology]
+    State --> Balance[balance]
+    State --> Onboard[onboard]
+    Generate --> CO[CODEOWNERS]
+    Drift --> CI[CI output]
+```
+
 ## Installation
 
 ```bash
@@ -109,7 +126,7 @@ github:
   api_enabled: false          # gate review_weight + topology/balance API features
 ```
 
-The GitHub token is **never** read from this file — set the `GITHUB_TOKEN` environment variable instead. `checkowners.yml` is committed to your repo, so storing a token here would push it to GitHub. `load_config` raises a clear error if `github.token` is present.
+The GitHub token is **never** read from this file. Set the `GITHUB_TOKEN` environment variable instead. `checkowners.yml` is committed to your repo, so storing a token here would push it to GitHub. `load_config` raises a clear error if `github.token` is present.
 
 ## Confidence scoring
 
@@ -187,7 +204,7 @@ Disable `resolve_teams` if you want raw `@username` entries even when a team wou
 
 **Does checkowners require a GitHub token?**
 
-No — the core inference is pure git and runs offline. A token is only needed for three optional features:
+No. The core inference is pure git and runs offline. A token is only needed for three optional features:
 
 | Feature | Config gate | Why a token is needed |
 |---------|-------------|-----------------------|
@@ -195,18 +212,18 @@ No — the core inference is pure git and runs offline. A token is only needed f
 | Team / subteam resolution | `github.resolve_teams` + `github.org` | List org teams + members |
 | Review-load + topology reconciliation | `github.api_enabled` | PR review API + team membership |
 
-Without a token you still get confidence-scored ownership, drift detection, bus factor, expertise decay, and onboarding paths — they just operate on email handles and skip the review-activity signal in the confidence score.
+Without a token you still get confidence-scored ownership, drift detection, bus factor, expertise decay, and onboarding paths; they just operate on email handles and skip the review-activity signal in the confidence score.
 
 **What environment variable holds the token?**
 
-`GITHUB_TOKEN` (not `GITHUB_API_KEY`). This is the **only** supported way to provide a token — `github.token` is intentionally **not** accepted in `checkowners.yml` because that file gets committed to git and storing a secret there would publish it to GitHub. `load_config` refuses to load a config that contains `github.token` so a misconfigured repo fails fast instead of silently leaking.
+`GITHUB_TOKEN` (not `GITHUB_API_KEY`). This is the **only** supported way to provide a token. `github.token` is intentionally **not** accepted in `checkowners.yml` because that file gets committed to git and storing a secret there would publish it to GitHub. `load_config` refuses to load a config that contains `github.token` so a misconfigured repo fails fast instead of silently leaking.
 
 ```bash
 export GITHUB_TOKEN=ghp_...
 checkowners generate
 ```
 
-In GitHub Actions, `${{ secrets.GITHUB_TOKEN }}` is automatically available — see the [composite action](#github-actions) above.
+In GitHub Actions, `${{ secrets.GITHUB_TOKEN }}` is automatically available; see the [composite action](#github-actions) above.
 
 **What token scopes are needed?**
 
@@ -230,7 +247,7 @@ The first one that exists wins for `analyze`, `drift`, `validate`, and `sync`. I
 
 **Where does the config file live?**
 
-`.github/checkowners.yml`. There's no auto-detection for the config — it has to live there.
+`.github/checkowners.yml`. There's no auto-detection for the config; it has to live there.
 
 **Where is the state cache?**
 
@@ -242,10 +259,10 @@ The first one that exists wins for `analyze`, `drift`, `validate`, and `sync`. I
 
 A weighted sum of four signals, each in `[0.0, 1.0]`:
 
-- **Recency** — `exp(-ln 2 × days_since_last_commit / half_life)`. Default half-life is 90 days.
-- **Frequency** — contributor's commits on the path divided by the path's max contributor.
-- **Blame coverage** — fraction of current lines `git blame --line-porcelain` attributes to the contributor.
-- **Review activity** — PR reviews on the path divided by total reviews; `0.0` unless `github.api_enabled` is true.
+- **Recency**: `exp(-ln 2 × days_since_last_commit / half_life)`. Default half-life is 90 days.
+- **Frequency**: contributor's commits on the path divided by the path's max contributor.
+- **Blame coverage**: fraction of current lines `git blame --line-porcelain` attributes to the contributor.
+- **Review activity**: PR reviews on the path divided by total reviews; `0.0` unless `github.api_enabled` is true.
 
 Weights are configurable under `scoring`. The final score is clamped to `[0.0, 1.0]`; owners below `analysis.confidence_threshold` are dropped from the generated CODEOWNERS.
 

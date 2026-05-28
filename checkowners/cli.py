@@ -32,6 +32,7 @@ from checkowners.models import (
     PathOwnership,
 )
 from checkowners.notify import compute_severity, send_notification
+from checkowners.onboard import OnboardingPath, generate_onboarding_path
 from checkowners.state import load_ownership, write_state
 from checkowners.topology import (
     TopologyReport,
@@ -635,6 +636,61 @@ def topology(json_output: JsonOption = False) -> None:
         console.print("[bold]Mismatches:[/bold]")
         for line in report.mismatches:
             console.print(f"  - {line}")
+
+
+def _onboarding_payload(report: OnboardingPath) -> dict[str, Any]:
+    return {
+        "target": report.target,
+        "steps": [
+            {
+                "order": step.order,
+                "path": step.path,
+                "reviewer": step.reviewer,
+                "complexity": step.complexity,
+                "description": step.description,
+            }
+            for step in report.steps
+        ],
+    }
+
+
+@app.command()
+def onboard(
+    path: Annotated[str, typer.Argument(help="Path or directory to onboard into.")],
+    json_output: JsonOption = False,
+    markdown: Annotated[
+        bool,
+        typer.Option("--markdown", help="Emit a Markdown checklist."),
+    ] = False,
+) -> None:
+    """Generate a structured onboarding path for a codebase area."""
+    config = load_config()
+    ownership = _load_or_analyze(config, Path.cwd())
+    report = generate_onboarding_path(ownership, config, target=path)
+    if json_output:
+        typer.echo(json.dumps(_onboarding_payload(report), indent=2))
+        return
+    if markdown:
+        typer.echo(report.to_markdown())
+        return
+    if not report.steps:
+        console.print(f"[yellow]No onboarding path could be built for {path!r}.[/yellow]")
+        return
+    table = Table(title=f"Onboarding path: {path}")
+    table.add_column("#", justify="right")
+    table.add_column("Path", style="cyan")
+    table.add_column("Reviewer")
+    table.add_column("Complexity")
+    table.add_column("Why")
+    for step in report.steps:
+        table.add_row(
+            str(step.order),
+            step.path,
+            step.reviewer,
+            step.complexity,
+            step.description,
+        )
+    console.print(table)
 
 
 @app.command()

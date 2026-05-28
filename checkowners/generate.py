@@ -88,9 +88,7 @@ def _collect_owned_paths(
     """Return owned paths sorted alphabetically with their confidence-ordered owners."""
     rows: list[tuple[str, tuple[OwnerEntry, ...]]] = []
     for path, path_ownership in ownership.paths.items():
-        filtered = tuple(
-            o for o in path_ownership.owners if o.confidence >= confidence_threshold
-        )
+        filtered = tuple(o for o in path_ownership.owners if o.confidence >= confidence_threshold)
         if not filtered:
             continue
         rows.append((_normalize_path(path), filtered))
@@ -100,11 +98,7 @@ def _collect_owned_paths(
 
 def _collect_unowned_paths(ownership: OwnershipMap) -> list[str]:
     """Paths present in the map with no inferred owners."""
-    return sorted(
-        _normalize_path(path)
-        for path, po in ownership.paths.items()
-        if not po.owners
-    )
+    return sorted(_normalize_path(path) for path, po in ownership.paths.items() if not po.owners)
 
 
 def _normalize_path(path: str) -> str:

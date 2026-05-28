@@ -135,10 +135,7 @@ def _serialize_bus_factor_summary(
     entries: tuple[BusFactor, ...],
 ) -> dict[str, Any]:
     critical_paths = sorted(e.path for e in entries if e.bus_factor <= 1)
-    if entries:
-        repo_average = round(sum(e.bus_factor for e in entries) / len(entries), 2)
-    else:
-        repo_average = 0.0
+    repo_average = round(sum(e.bus_factor for e in entries) / len(entries), 2) if entries else 0.0
     return {
         "critical_paths": critical_paths,
         "repo_average": repo_average,

@@ -35,10 +35,7 @@ def _make_git_log_output(
     """Build a fake git log stdout string from (author, timestamp, files) triples."""
     chunks: list[str] = []
     for author, ts, files in commits:
-        chunk = (
-            f"COMMIT_START\n{author}\n{ts.isoformat()}\n\n"
-            + "\n".join(files)
-        )
+        chunk = f"COMMIT_START\n{author}\n{ts.isoformat()}\n\n" + "\n".join(files)
         chunks.append(chunk)
     return "\n".join(chunks) + "\n"
 
@@ -122,9 +119,7 @@ def test_analyze_min_commits_filter() -> None:
     ]
     stdout = _make_git_log_output(commits)
     config = Config(
-        analysis=AnalysisConfig(
-            min_commits=2, top_n_owners=5, confidence_threshold=0.0
-        ),
+        analysis=AnalysisConfig(min_commits=2, top_n_owners=5, confidence_threshold=0.0),
     )
 
     with (
@@ -146,9 +141,7 @@ def test_analyze_top_n_owners() -> None:
     )
     stdout = _make_git_log_output(commits)
     config = Config(
-        analysis=AnalysisConfig(
-            min_commits=1, top_n_owners=2, confidence_threshold=0.0
-        ),
+        analysis=AnalysisConfig(min_commits=1, top_n_owners=2, confidence_threshold=0.0),
     )
 
     with (
@@ -215,9 +208,7 @@ def test_analyze_confidence_threshold_filters() -> None:
     ]
     stdout = _make_git_log_output(commits)
     config = Config(
-        analysis=AnalysisConfig(
-            min_commits=1, top_n_owners=5, confidence_threshold=0.95
-        ),
+        analysis=AnalysisConfig(min_commits=1, top_n_owners=5, confidence_threshold=0.95),
         scoring=ScoringConfig(recency_half_life_days=10),
     )
 
@@ -238,9 +229,7 @@ def test_analyze_decay_warning_flagged() -> None:
     ]
     stdout = _make_git_log_output(commits)
     config = Config(
-        analysis=AnalysisConfig(
-            min_commits=1, top_n_owners=2, confidence_threshold=0.0
-        ),
+        analysis=AnalysisConfig(min_commits=1, top_n_owners=2, confidence_threshold=0.0),
         decay=DecayConfig(threshold_days=100),
     )
 
@@ -265,9 +254,7 @@ def test_analyze_bus_factor_counts_qualified_owners() -> None:
     )
     stdout = _make_git_log_output(commits)
     config = Config(
-        analysis=AnalysisConfig(
-            min_commits=1, top_n_owners=3, confidence_threshold=0.0
-        ),
+        analysis=AnalysisConfig(min_commits=1, top_n_owners=3, confidence_threshold=0.0),
     )
 
     with (
@@ -393,9 +380,7 @@ def test_blame_for_path_handles_error() -> None:
 
 
 def test_gather_blame_coverage_aggregates() -> None:
-    blame_stdout = (
-        "abc 1 1 1\nauthor Alice\nauthor-mail <alice@example.com>\n\tline\n"
-    )
+    blame_stdout = "abc 1 1 1\nauthor Alice\nauthor-mail <alice@example.com>\n\tline\n"
     with patch(_MOCK_GIT, return_value=_mock_run(blame_stdout)):
         coverage = _gather_blame_coverage(["x.py"], Path("/fake"))
     assert coverage["x.py"]["alice@example.com"] == 1.0

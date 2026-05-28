@@ -11,8 +11,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from checkowners.models import (
-    Config,
     ConfidenceScore,
+    Config,
     DecayWarning,
     OwnerEntry,
     OwnershipMap,
@@ -249,11 +249,7 @@ def _filter_nonexistent(
     contributions: dict[str, dict[str, _Contribution]],
     repo_root: Path,
 ) -> dict[str, dict[str, _Contribution]]:
-    return {
-        path: authors
-        for path, authors in contributions.items()
-        if (repo_root / path).exists()
-    }
+    return {path: authors for path, authors in contributions.items() if (repo_root / path).exists()}
 
 
 def _is_excluded(path: str, patterns: tuple[str, ...]) -> bool:

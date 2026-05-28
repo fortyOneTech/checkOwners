@@ -34,7 +34,9 @@ def _entry(handle: str, confidence: float = 0.8) -> OwnerEntry:
 
 def _make_ownership(raw: dict[str, tuple[OwnerEntry, ...]]) -> OwnershipMap:
     return OwnershipMap(
-        paths={p: PathOwnership(owners=owners, bus_factor=len(owners)) for p, owners in raw.items()},
+        paths={
+            p: PathOwnership(owners=owners, bus_factor=len(owners)) for p, owners in raw.items()
+        },
         last_analyzed=_NOW,
     )
 
@@ -149,11 +151,7 @@ def test_detect_drift_both_mode(tmp_path: Path) -> None:
 
 
 def test_parse_codeowners_strips_inline_comments(tmp_path: Path) -> None:
-    content = (
-        "# header\n"
-        "/src/main.py alice@example.com  # alice(0.92)\n"
-        "# trailing\n"
-    )
+    content = "# header\n/src/main.py alice@example.com  # alice(0.92)\n# trailing\n"
     _write_codeowners(tmp_path, content)
     assert _parse_codeowners(tmp_path / ".github" / "CODEOWNERS") == {
         "/src/main.py": ("alice@example.com",),

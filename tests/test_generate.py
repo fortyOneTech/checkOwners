@@ -106,9 +106,7 @@ def test_generate_confidence_threshold_filters_owners() -> None:
 
 
 def test_generate_confidence_threshold_drops_path_when_all_owners_filtered() -> None:
-    ownership = _make_ownership(
-        {"src/main.py": (_entry("alice@example.com", 0.1),)}
-    )
+    ownership = _make_ownership({"src/main.py": (_entry("alice@example.com", 0.1),)})
     config = Config(analysis=AnalysisConfig(confidence_threshold=0.3))
     content = _build_codeowners_content(ownership, config)
     assert "src/main.py" not in content
@@ -123,14 +121,16 @@ def test_generate_include_confidence_annotates() -> None:
         output=OutputConfig(include_confidence=True),
     )
     content = _build_codeowners_content(ownership, config)
-    assert "/src/main.py alice@example.com bob@example.com  # alice@example.com(0.92) bob@example.com(0.71)" in content
+    expected_line = (
+        "/src/main.py alice@example.com bob@example.com"
+        "  # alice@example.com(0.92) bob@example.com(0.71)"
+    )
+    assert expected_line in content
     assert "Confidence scores reflect each owner's expertise" in content
 
 
 def test_generate_include_confidence_disabled_no_annotation() -> None:
-    ownership = _make_ownership(
-        {"src/main.py": (_entry("alice@example.com", 0.92),)}
-    )
+    ownership = _make_ownership({"src/main.py": (_entry("alice@example.com", 0.92),)})
     config = Config(
         analysis=AnalysisConfig(confidence_threshold=0.0),
         output=OutputConfig(include_confidence=False),
@@ -142,9 +142,7 @@ def test_generate_include_confidence_disabled_no_annotation() -> None:
 def test_generate_include_unowned_true() -> None:
     ownership = OwnershipMap(
         paths={
-            "src/main.py": PathOwnership(
-                owners=(_entry("alice@example.com", 0.9),), bus_factor=1
-            ),
+            "src/main.py": PathOwnership(owners=(_entry("alice@example.com", 0.9),), bus_factor=1),
             "src/orphan.py": PathOwnership(owners=(), bus_factor=0),
         },
         last_analyzed=_NOW,
@@ -161,9 +159,7 @@ def test_generate_include_unowned_true() -> None:
 def test_generate_include_unowned_false() -> None:
     ownership = OwnershipMap(
         paths={
-            "src/main.py": PathOwnership(
-                owners=(_entry("alice@example.com", 0.9),), bus_factor=1
-            ),
+            "src/main.py": PathOwnership(owners=(_entry("alice@example.com", 0.9),), bus_factor=1),
             "src/orphan.py": PathOwnership(owners=(), bus_factor=0),
         },
         last_analyzed=_NOW,
@@ -263,9 +259,7 @@ def test_generate_with_team_resolution() -> None:
 
 
 def test_generate_team_resolution_disabled() -> None:
-    ownership = _make_ownership(
-        {"src/main.py": (_entry("@alice", 0.9), _entry("@bob", 0.8))}
-    )
+    ownership = _make_ownership({"src/main.py": (_entry("@alice", 0.9), _entry("@bob", 0.8))})
     config = Config(
         analysis=AnalysisConfig(confidence_threshold=0.0),
         github=GithubConfig(resolve_teams=False),

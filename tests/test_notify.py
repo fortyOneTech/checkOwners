@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import urllib.request
 from unittest.mock import MagicMock, patch
 
 from checkowners.models import (
@@ -113,7 +114,7 @@ def test_send_notification_critical_signal_overrides_low_delta() -> None:
     drift = _drift_with(delta=0.05, bus_factor=1)
     captured: list[bytes] = []
 
-    def _capture(req, timeout):  # type: ignore[no-untyped-def]
+    def _capture(req: urllib.request.Request, timeout: float) -> MagicMock:
         captured.append(req.data)
         return MagicMock()
 

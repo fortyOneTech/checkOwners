@@ -1,0 +1,225 @@
+"""Persistent state at ~/.checkowners/state.json.
+
+The state file is the cache of the most recent analyze run for a repo.
+Downstream commands (drift, decay, bus-factor, topology, balance, onboard)
+read from it to avoid re-running git log on every invocation.
+
+Schema is versioned. Older state files are not auto-migrated; they are
+ignored and a fresh state replaces them on the next analyze.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+from dataclasses import asdict
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from checkowners.models import (
+    BusFactor,
+    ConfidenceScore,
+    DecayWarning,
+    OwnerEntry,
+    OwnershipMap,
+    PathOwnership,
+    TeamCluster,
+)
+
+SCHEMA_VERSION: int = 2
+_STATE_DIR = Path.home() / ".checkowners"
+_STATE_FILENAME = "state.json"
+
+
+def _state_path() -> Path:
+    """Resolve the state file path, honoring CHECKOWNERS_STATE_DIR override."""
+    override = os.environ.get("CHECKOWNERS_STATE_DIR")
+    base = Path(override) if override else _STATE_DIR
+    return base / _STATE_FILENAME
+
+
+def read_state() -> dict[str, Any] | None:
+    """Read the state file as a dict, or None if missing or version mismatch."""
+    target = _state_path()
+    if not target.exists():
+        return None
+    try:
+        data: Any = json.loads(target.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    if data.get("schema_version") != SCHEMA_VERSION:
+        return None
+    return data
+
+
+def write_state(
+    ownership: OwnershipMap,
+    *,
+    topology: tuple[TeamCluster, ...] = (),
+    bus_factor_summary: tuple[BusFactor, ...] = (),
+    drift_detected: bool = False,
+) -> Path:
+    """Persist the latest ownership map and derived intelligence to disk."""
+    target = _state_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    payload: dict[str, Any] = {
+        "schema_version": SCHEMA_VERSION,
+        "inferred": {path: _serialize_path(po) for path, po in ownership.paths.items()},
+        "topology": {"clusters": [asdict(c) for c in topology]},
+        "bus_factor_summary": _serialize_bus_factor_summary(bus_factor_summary),
+        "last_analyzed": ownership.last_analyzed.astimezone(UTC).isoformat(),
+        "drift_detected": drift_detected,
+    }
+    target.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    return target
+
+
+def load_ownership() -> OwnershipMap | None:
+    """Reconstruct OwnershipMap from disk, or None if state is missing/invalid."""
+    data = read_state()
+    if data is None:
+        return None
+    inferred = data.get("inferred")
+    last_analyzed_raw = data.get("last_analyzed")
+    if not isinstance(inferred, dict) or not isinstance(last_analyzed_raw, str):
+        return None
+    paths: dict[str, PathOwnership] = {}
+    for path, raw in inferred.items():
+        if not isinstance(raw, dict):
+            continue
+        path_ownership = _deserialize_path(raw)
+        if path_ownership is None:
+            continue
+        paths[path] = path_ownership
+    try:
+        last_analyzed = datetime.fromisoformat(last_analyzed_raw)
+    except ValueError:
+        return None
+    return OwnershipMap(paths=paths, last_analyzed=last_analyzed)
+
+
+def _serialize_path(po: PathOwnership) -> dict[str, Any]:
+    return {
+        "owners": [_serialize_owner(o) for o in po.owners],
+        "bus_factor": po.bus_factor,
+        "decay_warnings": [_serialize_decay(w) for w in po.decay_warnings],
+    }
+
+
+def _serialize_owner(entry: OwnerEntry) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "handle": entry.handle,
+        "confidence": entry.confidence,
+        "last_commit": entry.last_commit.astimezone(UTC).isoformat() if entry.last_commit else None,
+        "commits": entry.commits,
+    }
+    if entry.score_breakdown is not None:
+        payload["score_breakdown"] = asdict(entry.score_breakdown)
+    return payload
+
+
+def _serialize_decay(warning: DecayWarning) -> dict[str, Any]:
+    return {
+        "handle": warning.handle,
+        "path": warning.path,
+        "last_commit": warning.last_commit.astimezone(UTC).isoformat(),
+        "days_since_last_commit": warning.days_since_last_commit,
+        "historical_confidence": warning.historical_confidence,
+    }
+
+
+def _serialize_bus_factor_summary(
+    entries: tuple[BusFactor, ...],
+) -> dict[str, Any]:
+    critical_paths = sorted(e.path for e in entries if e.bus_factor <= 1)
+    if entries:
+        repo_average = round(sum(e.bus_factor for e in entries) / len(entries), 2)
+    else:
+        repo_average = 0.0
+    return {
+        "critical_paths": critical_paths,
+        "repo_average": repo_average,
+        "entries": [asdict(e) for e in entries],
+    }
+
+
+def _deserialize_path(raw: dict[str, Any]) -> PathOwnership | None:
+    raw_owners = raw.get("owners")
+    if not isinstance(raw_owners, list):
+        return None
+    owners: list[OwnerEntry] = []
+    for entry in raw_owners:
+        if not isinstance(entry, dict):
+            continue
+        deserialized = _deserialize_owner(entry)
+        if deserialized is not None:
+            owners.append(deserialized)
+    bus_factor = int(raw.get("bus_factor", 0))
+    raw_decay = raw.get("decay_warnings", [])
+    decay_warnings: list[DecayWarning] = []
+    if isinstance(raw_decay, list):
+        for warning in raw_decay:
+            if isinstance(warning, dict):
+                deserialized_warning = _deserialize_decay(warning)
+                if deserialized_warning is not None:
+                    decay_warnings.append(deserialized_warning)
+    return PathOwnership(
+        owners=tuple(owners),
+        bus_factor=bus_factor,
+        decay_warnings=tuple(decay_warnings),
+    )
+
+
+def _deserialize_owner(raw: dict[str, Any]) -> OwnerEntry | None:
+    handle = raw.get("handle")
+    confidence = raw.get("confidence")
+    commits = raw.get("commits")
+    last_commit_raw = raw.get("last_commit")
+    if not isinstance(handle, str) or not isinstance(confidence, (int, float)):
+        return None
+    if not isinstance(commits, int):
+        return None
+    last_commit: datetime | None
+    if isinstance(last_commit_raw, str):
+        try:
+            last_commit = datetime.fromisoformat(last_commit_raw)
+        except ValueError:
+            last_commit = None
+    else:
+        last_commit = None
+    score_breakdown: ConfidenceScore | None = None
+    raw_breakdown = raw.get("score_breakdown")
+    if isinstance(raw_breakdown, dict):
+        try:
+            score_breakdown = ConfidenceScore(
+                total=float(raw_breakdown["total"]),
+                recency=float(raw_breakdown["recency"]),
+                frequency=float(raw_breakdown["frequency"]),
+                blame=float(raw_breakdown["blame"]),
+                review=float(raw_breakdown["review"]),
+            )
+        except (KeyError, TypeError, ValueError):
+            score_breakdown = None
+    return OwnerEntry(
+        handle=handle,
+        confidence=float(confidence),
+        last_commit=last_commit,
+        commits=commits,
+        score_breakdown=score_breakdown,
+    )
+
+
+def _deserialize_decay(raw: dict[str, Any]) -> DecayWarning | None:
+    try:
+        return DecayWarning(
+            handle=str(raw["handle"]),
+            path=str(raw["path"]),
+            last_commit=datetime.fromisoformat(str(raw["last_commit"])),
+            days_since_last_commit=int(raw["days_since_last_commit"]),
+            historical_confidence=float(raw["historical_confidence"]),
+        )
+    except (KeyError, TypeError, ValueError):
+        return None

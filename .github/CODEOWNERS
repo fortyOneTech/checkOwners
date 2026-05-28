@@ -14,6 +14,7 @@
 /checkowners/config.py samir.musali@gmail.com
 /checkowners/drift.py samir.musali@gmail.com
 /checkowners/generate.py samir.musali@gmail.com
+/checkowners/github.py samir.musali@gmail.com
 /checkowners/models.py samir.musali@gmail.com
 /checkowners/notify.py samir.musali@gmail.com
 /checkowners/validate.py samir.musali@gmail.com
@@ -24,5 +25,6 @@
 /tests/test_config.py samir.musali@gmail.com
 /tests/test_drift.py samir.musali@gmail.com
 /tests/test_generate.py samir.musali@gmail.com
+/tests/test_github.py samir.musali@gmail.com
 /tests/test_notify.py samir.musali@gmail.com
 /tests/test_validate.py samir.musali@gmail.com

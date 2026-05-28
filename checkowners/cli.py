@@ -13,6 +13,7 @@ from rich.console import Console
 from rich.table import Table
 
 from checkowners.analyze import analyze_ownership
+from checkowners.balance import BalanceReport, analyze_balance
 from checkowners.busfactor import BusFactorReport, classify, compute_bus_factor
 from checkowners.config import find_codeowners_path, load_config
 from checkowners.decay import DecayReport, detect_decay
@@ -32,6 +33,11 @@ from checkowners.models import (
 )
 from checkowners.notify import compute_severity, send_notification
 from checkowners.state import load_ownership, write_state
+from checkowners.topology import (
+    TopologyReport,
+    declared_teams_from_github,
+    infer_topology,
+)
 from checkowners.validate import validate_codeowners
 
 app = typer.Typer(
@@ -526,6 +532,109 @@ def _bus_factor_payload(report: BusFactorReport, config: Config) -> dict[str, An
         ],
         "critical_paths": list(report.critical_paths),
     }
+
+
+def _topology_payload(report: TopologyReport) -> dict[str, Any]:
+    return {
+        "clusters": [
+            {
+                "name": cluster.name,
+                "members": list(cluster.members),
+                "primary_paths": list(cluster.primary_paths),
+                "declared": cluster.declared,
+            }
+            for cluster in report.clusters
+        ],
+        "mismatches": list(report.mismatches),
+    }
+
+
+def _balance_payload(report: BalanceReport) -> dict[str, Any]:
+    return {
+        "source": report.source,
+        "average": report.average,
+        "loads": [{"handle": load.handle, "reviews": load.reviews} for load in report.loads],
+        "overloaded": [
+            {"handle": load.handle, "reviews": load.reviews} for load in report.overloaded
+        ],
+        "suggestions": [
+            {
+                "overloaded": suggestion.overloaded,
+                "candidate": suggestion.candidate,
+                "confidence": round(suggestion.confidence, 4),
+                "proposed_shift": suggestion.proposed_shift,
+            }
+            for suggestion in report.suggestions
+        ],
+    }
+
+
+@app.command()
+def balance(json_output: JsonOption = False) -> None:
+    """Analyze PR review load distribution and suggest rebalancing."""
+    config = load_config()
+    ownership = _load_or_analyze(config, Path.cwd())
+    report = analyze_balance(ownership, config)
+    if json_output:
+        typer.echo(json.dumps(_balance_payload(report), indent=2))
+        return
+    if not report.loads:
+        console.print("[yellow]No review load data available.[/yellow]")
+        return
+    console.print(f"[dim]source: {report.source}; average reviews: {report.average:.1f}[/dim]")
+    table = Table(title="Review Load")
+    table.add_column("Handle", style="cyan")
+    table.add_column("Reviews", justify="right")
+    table.add_column("Status")
+    overloaded_handles = {load.handle for load in report.overloaded}
+    for load in report.loads:
+        status = (
+            "[red]overloaded[/red]" if load.handle in overloaded_handles else "[green]ok[/green]"
+        )
+        table.add_row(load.handle, str(load.reviews), status)
+    console.print(table)
+    if report.suggestions:
+        console.print()
+        console.print("[bold]Rebalance suggestions:[/bold]")
+        for suggestion in report.suggestions:
+            console.print(
+                f"  - shift ~{suggestion.proposed_shift} reviews from {suggestion.overloaded}"
+                f" to {suggestion.candidate} (confidence {suggestion.confidence:.2f})"
+            )
+
+
+@app.command()
+def topology(json_output: JsonOption = False) -> None:
+    """Infer team topology from commit co-occurrence patterns."""
+    config = load_config()
+    ownership = _load_or_analyze(config, Path.cwd())
+    declared = declared_teams_from_github(config)
+    report = infer_topology(ownership, config, declared_teams=declared)
+    if json_output:
+        typer.echo(json.dumps(_topology_payload(report), indent=2))
+        return
+    if not report.clusters:
+        console.print("[yellow]No clusters inferred.[/yellow]")
+        return
+    table = Table(title="Inferred Team Topology")
+    table.add_column("Cluster", style="cyan")
+    table.add_column("Members")
+    table.add_column("Primary paths")
+    table.add_column("Source")
+    for cluster in report.clusters:
+        source = "[green]declared[/green]" if cluster.declared else "[yellow]inferred[/yellow]"
+        table.add_row(
+            cluster.name,
+            ", ".join(cluster.members),
+            ", ".join(cluster.primary_paths) or "-",
+            source,
+        )
+    console.print(table)
+    if report.mismatches:
+        console.print()
+        console.print("[bold]Mismatches:[/bold]")
+        for line in report.mismatches:
+            console.print(f"  - {line}")
 
 
 @app.command()

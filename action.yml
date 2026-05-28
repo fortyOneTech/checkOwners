@@ -1,0 +1,128 @@
+name: checkOwners
+description: >-
+  Infer CODEOWNERS from git history with confidence scoring, drift detection,
+  bus factor analysis, and expertise decay alerts.
+author: Samir Musali
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  config:
+    description: Path to the checkowners.yml file.
+    required: false
+    default: .github/checkowners.yml
+  mode:
+    description: Drift mode (commit | repo | both).
+    required: false
+    default: both
+  include_bus_factor:
+    description: Emit the bus_factor_summary output.
+    required: false
+    default: "true"
+  include_decay:
+    description: Emit the decay_summary output.
+    required: false
+    default: "true"
+  fail_on_drift:
+    description: Fail the action when drift_detected is true.
+    required: false
+    default: "true"
+  python_version:
+    description: Python version to set up.
+    required: false
+    default: "3.13"
+  checkowners_version:
+    description: >-
+      Version of the checkowners PyPI package to install. Use "" to install
+      the latest published release.
+    required: false
+    default: ""
+
+outputs:
+  checkowners_drift:
+    description: JSON payload of the drift report.
+    value: ${{ steps.run.outputs.checkowners_drift }}
+  bus_factor_summary:
+    description: JSON payload listing per-path bus factors and critical paths.
+    value: ${{ steps.bus_factor.outputs.bus_factor_summary }}
+  decay_summary:
+    description: JSON payload listing decaying ownership entries.
+    value: ${{ steps.decay.outputs.decay_summary }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python_version }}
+
+    - name: Install checkowners
+      shell: bash
+      env:
+        CHECKOWNERS_VERSION: ${{ inputs.checkowners_version }}
+      run: |
+        if [ -n "$CHECKOWNERS_VERSION" ]; then
+          pip install --upgrade "checkowners[graph]==$CHECKOWNERS_VERSION"
+        else
+          pip install --upgrade "checkowners[graph]"
+        fi
+
+    - name: Run checkowners drift
+      id: run
+      shell: bash
+      env:
+        CHECKOWNERS_DRIFT_MODE: ${{ inputs.mode }}
+      run: |
+        # Temporarily override drift.mode via a generated overlay so the input
+        # wins regardless of what the repo's checkowners.yml says.
+        export CHECKOWNERS_CONFIG="${{ inputs.config }}"
+        checkowners drift --json > drift.json
+        {
+          echo "checkowners_drift<<EOF"
+          cat drift.json
+          echo
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+        # Also publish the same as the historical key used by older workflows.
+        cat drift.json
+
+    - name: Compute bus factor summary
+      id: bus_factor
+      if: ${{ inputs.include_bus_factor == 'true' }}
+      shell: bash
+      run: |
+        checkowners bus-factor --all --json > bus_factor.json
+        {
+          echo "bus_factor_summary<<EOF"
+          cat bus_factor.json
+          echo
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Compute decay summary
+      id: decay
+      if: ${{ inputs.include_decay == 'true' }}
+      shell: bash
+      run: |
+        checkowners decay --json > decay.json
+        {
+          echo "decay_summary<<EOF"
+          cat decay.json
+          echo
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Fail on drift
+      if: ${{ inputs.fail_on_drift == 'true' }}
+      shell: bash
+      run: |
+        python - <<'PY'
+        import json, sys
+        with open("drift.json") as f:
+            data = json.load(f)
+        if data.get("drift_detected"):
+            print("drift detected:", data.get("severity"), "max_delta=", data.get("max_confidence_delta"))
+            sys.exit(1)
+        PY

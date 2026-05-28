@@ -1,0 +1,78 @@
+name: checkowners-example
+
+on:
+  pull_request:
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write           # required to label PRs as ownership-critical
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0       # git log + git blame need the full history
+
+      - id: checkowners
+        uses: ./
+        with:
+          mode: both
+          fail_on_drift: "false"
+
+      - name: Post drift summary comment
+        if: fromJson(steps.checkowners.outputs.checkowners_drift).drift_detected
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const drift = JSON.parse(`${{ steps.checkowners.outputs.checkowners_drift }}`);
+            const bf = JSON.parse(`${{ steps.checkowners.outputs.bus_factor_summary }}`);
+            const critical = bf.critical_paths || [];
+            const badge = critical.length > 0 ? '**CRITICAL**' : `**${drift.severity?.toUpperCase() ?? 'DRIFT'}**`;
+
+            const renderEntry = (entry) => `| ${entry.path} | ${entry.confidence_delta.toFixed(2)} | ${entry.reason} |`;
+            const body = [
+              `### checkowners drift detected (${badge})`,
+              '',
+              critical.length > 0
+                ? `> ${critical.length} path(s) with bus_factor=1: ${critical.join(', ')}`
+                : '',
+              '',
+              '<details><summary>Drift entries</summary>',
+              '',
+              '| Path | Δ | Reason |',
+              '|------|---|--------|',
+              ...((drift.stale || []).map(renderEntry)),
+              ...((drift.missing || []).map(renderEntry)),
+              ...((drift.changed || []).map(renderEntry)),
+              '',
+              '</details>',
+              '',
+              'Run `checkowners sync` locally to apply the inferred CODEOWNERS.',
+            ].filter(Boolean).join('\n');
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
+
+      - name: Add ownership-critical label
+        if: fromJson(steps.checkowners.outputs.bus_factor_summary).critical_paths[0]
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['ownership-critical'],
+            });
+
+      - name: Fail when drift detected
+        if: fromJson(steps.checkowners.outputs.checkowners_drift).drift_detected
+        run: |
+          echo "checkowners drift detected. Run checkowners sync to resolve."
+          exit 1

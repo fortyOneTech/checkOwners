@@ -1,11 +1,11 @@
-"""CODEOWNERS file generator from inferred ownership."""
+"""CODEOWNERS file generator from confidence-scored ownership."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
 
-from checkowners.models import Config, OwnershipMap
+from checkowners.models import Config, OwnerEntry, OwnershipMap, PathOwnership
 
 _DEFAULT_CODEOWNERS_PATH = ".github/CODEOWNERS"
 
@@ -35,7 +35,7 @@ def _build_codeowners_content(
 ) -> str:
     """Build the CODEOWNERS file content string."""
     lines: list[str] = [config.output.header, ""]
-    owned_paths = _collect_owned_paths(ownership)
+    owned_paths = _collect_owned_paths(ownership, config.analysis.confidence_threshold)
     unowned_paths = _collect_unowned_paths(ownership)
 
     team_resolve: Callable[[tuple[str, ...]], str | None] | None = None
@@ -45,12 +45,18 @@ def _build_codeowners_content(
         team_resolve = create_team_resolver(token, org)
 
     for path, owners in owned_paths:
+        handles = tuple(o.handle for o in owners)
         if team_resolve is not None:
-            team = team_resolve(owners)
+            team = team_resolve(handles)
             if team is not None:
-                lines.append(f"{path} {team}")
+                lines.append(_format_line(path, (team,), owners, config))
                 continue
-        lines.append(f"{path} {' '.join(owners)}")
+        lines.append(_format_line(path, handles, owners, config))
+
+    if owned_paths and config.output.include_confidence:
+        lines.append("")
+        lines.append("# Confidence scores reflect each owner's expertise as of")
+        lines.append(f"# {ownership.last_analyzed.isoformat(timespec='seconds')}.")
 
     if config.output.include_unowned and unowned_paths:
         lines.append("")
@@ -62,29 +68,55 @@ def _build_codeowners_content(
     return "\n".join(lines)
 
 
+def _format_line(
+    path: str,
+    written_handles: tuple[str, ...],
+    owners: tuple[OwnerEntry, ...],
+    config: Config,
+) -> str:
+    line = f"{path} {' '.join(written_handles)}"
+    if not config.output.include_confidence:
+        return line
+    annotations = " ".join(f"{o.handle}({o.confidence:.2f})" for o in owners)
+    return f"{line}  # {annotations}"
+
+
 def _collect_owned_paths(
     ownership: OwnershipMap,
-) -> list[tuple[str, tuple[str, ...]]]:
-    """Return owned paths sorted alphabetically with their owners."""
-    return sorted(
-        ((_normalize_path(path), owners) for path, owners in ownership.owners.items() if owners),
-        key=lambda item: item[0],
-    )
+    confidence_threshold: float,
+) -> list[tuple[str, tuple[OwnerEntry, ...]]]:
+    """Return owned paths sorted alphabetically with their confidence-ordered owners."""
+    rows: list[tuple[str, tuple[OwnerEntry, ...]]] = []
+    for path, path_ownership in ownership.paths.items():
+        filtered = tuple(
+            o for o in path_ownership.owners if o.confidence >= confidence_threshold
+        )
+        if not filtered:
+            continue
+        rows.append((_normalize_path(path), filtered))
+    rows.sort(key=lambda item: item[0])
+    return rows
 
 
 def _collect_unowned_paths(ownership: OwnershipMap) -> list[str]:
-    """Return paths with no inferred owners, sorted alphabetically."""
-    return sorted(_normalize_path(path) for path, owners in ownership.owners.items() if not owners)
+    """Paths present in the map with no inferred owners."""
+    return sorted(
+        _normalize_path(path)
+        for path, po in ownership.paths.items()
+        if not po.owners
+    )
 
 
 def _normalize_path(path: str) -> str:
-    """Normalize a file path for CODEOWNERS format."""
     if not path.startswith("/"):
         return f"/{path}"
     return path
 
 
 def _write_codeowners(codeowners_path: Path, content: str) -> None:
-    """Write CODEOWNERS content to the given path."""
     codeowners_path.parent.mkdir(parents=True, exist_ok=True)
     codeowners_path.write_text(content, encoding="utf-8")
+
+
+def _owners_for_path(po: PathOwnership) -> tuple[OwnerEntry, ...]:
+    return po.owners

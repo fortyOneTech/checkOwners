@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0     # required so git log / git blame have history
 
       - uses: actions/setup-python@v5
         with:
@@ -26,6 +26,36 @@ jobs:
 
       - name: Run tests
         run: hatch run test
+
+  smoke:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install built wheel
+        run: |
+          pip install hatch
+          hatch build
+          pip install "dist/checkowners-"*"-py3-none-any.whl[graph]"
+
+      - name: Smoke-test new commands
+        run: |
+          checkowners analyze --json > analyze.json
+          checkowners drift --json > drift.json
+          checkowners bus-factor --all --json > bus.json
+          checkowners decay --json > decay.json
+          checkowners topology --json > topology.json
+          checkowners balance --json > balance.json
+          # Confirm the artifacts have the expected top-level keys.
+          python -c "import json; d=json.load(open('drift.json')); assert 'drift_detected' in d and 'severity' in d, d"
+          python -c "import json; d=json.load(open('bus.json')); assert 'entries' in d, d"
 
   lint:
     runs-on: ubuntu-latest

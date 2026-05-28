@@ -50,6 +50,7 @@ dependencies = [
     "ruff>=0.4.0",
     "mypy>=1.0",
     "types-PyYAML",
+    "networkx>=3.0",
 ]
 
 [tool.hatch.envs.default.scripts]

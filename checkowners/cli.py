@@ -13,12 +13,14 @@ from rich.console import Console
 from rich.table import Table
 
 from checkowners.analyze import analyze_ownership
+from checkowners.busfactor import BusFactorReport, classify, compute_bus_factor
 from checkowners.config import find_codeowners_path, load_config
 from checkowners.decay import DecayReport, detect_decay
 from checkowners.drift import detect_drift
 from checkowners.expertise import rank_expertise
 from checkowners.generate import generate_codeowners
 from checkowners.github import get_github_token, map_owners
+from checkowners.graph import GraphExtraMissingError, build_graph, to_dot, to_text
 from checkowners.models import (
     Config,
     DriftEntry,
@@ -395,6 +397,36 @@ def _decay_report_payload(report: DecayReport) -> dict[str, Any]:
 
 
 @app.command()
+def graph(
+    export: Annotated[
+        str | None,
+        typer.Option(
+            "--export",
+            help="Export the graph in the given format (currently 'dot').",
+            case_sensitive=False,
+        ),
+    ] = None,
+) -> None:
+    """Render the contributor-file knowledge graph in the terminal."""
+    config = load_config()
+    ownership = _load_or_analyze(config, Path.cwd())
+    try:
+        graph_obj = build_graph(ownership)
+    except GraphExtraMissingError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from None
+    if export is None:
+        typer.echo(to_text(graph_obj))
+        return
+    fmt = export.strip().lower()
+    if fmt == "dot":
+        typer.echo(to_dot(graph_obj))
+        return
+    console.print(f"[red]Unsupported export format: {export!r}; supported: dot[/red]")
+    raise typer.Exit(code=1)
+
+
+@app.command()
 def decay(json_output: JsonOption = False) -> None:
     """Detect contributors whose expertise on a path has gone stale."""
     config = load_config()
@@ -430,6 +462,70 @@ def decay(json_output: JsonOption = False) -> None:
             target,
         )
     console.print(table)
+
+
+@app.command(name="bus-factor")
+def bus_factor(
+    path: Annotated[
+        str | None,
+        typer.Argument(help="Path (or glob) to limit the report to."),
+    ] = None,
+    all_paths: Annotated[
+        bool,
+        typer.Option("--all", help="Report every path in the repo."),
+    ] = False,
+    json_output: JsonOption = False,
+) -> None:
+    """Calculate the bus factor for each path."""
+    if path is None and not all_paths:
+        console.print("[yellow]Specify a path or pass --all to report every path.[/yellow]")
+        raise typer.Exit(code=1)
+    config = load_config()
+    ownership = _load_or_analyze(config, Path.cwd())
+    target = path if path else None
+    report = compute_bus_factor(ownership, config, target=target)
+    if json_output:
+        data = _bus_factor_payload(report, config)
+        typer.echo(json.dumps(data, indent=2))
+        return
+    if not report.entries:
+        console.print("[yellow]No paths matched.[/yellow]")
+        return
+    table = Table(title="Bus Factor")
+    table.add_column("Path", style="cyan")
+    table.add_column("BF", justify="right")
+    table.add_column("Tier")
+    table.add_column("Owners")
+    table.add_column("Recommended backups")
+    for entry in report.entries:
+        tier = classify(entry.bus_factor, config.bus_factor)
+        owners = ", ".join(entry.contributors_above_threshold) or "-"
+        backups = ", ".join(entry.recommended_backups) or "-"
+        tier_str = {
+            "critical": "[red]CRITICAL[/red]",
+            "warning": "[yellow]WARN[/yellow]",
+            "ok": "[green]OK[/green]",
+        }[tier]
+        table.add_row(entry.path, str(entry.bus_factor), tier_str, owners, backups)
+    console.print(table)
+    console.print(f"[dim]repo average bus factor: {report.repo_average:.2f}[/dim]")
+
+
+def _bus_factor_payload(report: BusFactorReport, config: Config) -> dict[str, Any]:
+    return {
+        "repo_average": report.repo_average,
+        "entries": [
+            {
+                "path": entry.path,
+                "bus_factor": entry.bus_factor,
+                "tier": classify(entry.bus_factor, config.bus_factor),
+                "contributors_above_threshold": list(entry.contributors_above_threshold),
+                "recommended_backups": list(entry.recommended_backups),
+            }
+            for entry in report.entries
+        ],
+        "critical_paths": list(report.critical_paths),
+    }
 
 
 @app.command()

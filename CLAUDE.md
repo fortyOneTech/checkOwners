@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-checkOwners: a CODEOWNERS inference engine driven by git commit history with drift detection and CI integration. Pure-git, no-LLM. Python 3.11+, packaged with hatch, distributed on PyPI and as a composite GitHub Action.
+checkOwners: a CODEOWNERS inference engine driven by git commit history with confidence scoring, knowledge graph, expertise decay detection, bus factor analysis, team topology inference, review load balancing, onboarding-path generation, drift detection, and CI integration. Pure-git, no-LLM. Python 3.11+, packaged with hatch, distributed on PyPI and as a composite GitHub Action.
 
 ## Commands
 
@@ -18,57 +18,75 @@ hatch build                             # sdist + wheel in dist/
 ```
 
 CLI entry point is `checkowners` (Typer app in `checkowners/cli.py`):
-`analyze`, `generate`, `print`, `validate`, `drift`, `notify`, `sync`.
+`analyze`, `generate`, `print`, `validate`, `drift`, `notify`, `sync`,
+`expertise`, `decay`, `graph`, `bus-factor`, `topology`, `balance`, `onboard`.
 All subcommands support `--json` for structured JSON output.
 
 ## Architecture
 
 ```
 checkowners/
-  cli.py        # Typer app; all subcommands registered here
-  analyze.py    # git log + git blame -> OwnershipMap
-  generate.py   # OwnershipMap -> CODEOWNERS writer (auto-detected path)
-  drift.py      # State machine: inferred vs. current diff -> DriftResult
-  github.py     # GitHub API: email->@handle mapping, team resolution
-  notify.py     # Webhook POST on drift events
-  validate.py   # Syntax-only CODEOWNERS validator
-  config.py     # PyYAML loader, CODEOWNERS path auto-detection
-  models.py     # Dataclasses: OwnershipMap, DriftResult, Config, GithubConfig
-  state.py      # ~/.checkowners/state.json reader/writer
+  cli.py            # Typer app; all subcommands registered here
+  analyze.py        # git log + git blame -> confidence-scored OwnershipMap
+  generate.py       # OwnershipMap -> CODEOWNERS writer (confidence-weighted)
+  drift.py          # State machine: inferred vs. current diff -> DriftResult
+  notify.py         # Webhook POST with severity gating
+  validate.py       # Syntax-only CODEOWNERS validator
+  config.py         # PyYAML loader, CODEOWNERS path auto-detection
+  state.py          # ~/.checkowners/state.json reader/writer (schema v2)
+  expertise.py      # Per-path expertise ranking
+  decay.py          # Expertise decay detector with transfer recommendations
+  graph.py          # Knowledge graph builder (lazy networkx import)
+  busfactor.py      # Bus factor calculator with backup-reviewer suggestions
+  topology.py       # Team topology inference from commit co-occurrence
+  balance.py        # PR review load balancer
+  onboard.py        # Onboarding path generator
+  github.py         # GitHub API: email->@handle mapping, team resolution
+  models.py         # Dataclasses (OwnershipMap, PathOwnership, OwnerEntry,
+                    # ConfidenceScore, DriftResult, DriftEntry, ExpertiseRank,
+                    # TeamCluster, BusFactor, DecayWarning, all Config sections)
 tests/
-  test_analyze.py
-  test_generate.py
-  test_drift.py
-  test_validate.py
-  integration/  # Fixture git repos via GitPython
-action.yml      # Composite GitHub Action
+  test_<module>.py  # one per module; mocked subprocess; networkx-backed
+  integration/      # Fixture git repos via GitPython (future)
+action.yml          # Composite GitHub Action (composite drift + bus-factor + decay)
 ```
 
-Key data flow: `config.py` loads `.github/checkowners.yml` + auto-detects CODEOWNERS location -> `analyze.py` runs git log/blame -> `models.OwnershipMap` -> `github.py` maps emails to @handles and resolves teams (via GITHUB_TOKEN) -> `generate.py` writes CODEOWNERS or `drift.py` compares against existing CODEOWNERS -> `models.DriftResult` -> `notify.py` posts webhooks. CODEOWNERS auto-detected at: `.github/CODEOWNERS`, `CODEOWNERS` (root), or `docs/CODEOWNERS`.
+Key data flow: `config.py` loads `.github/checkowners.yml` + auto-detects CODEOWNERS location -> `analyze.py` runs git log + git blame and computes the four-factor confidence (recency, frequency, blame, review) -> `models.OwnershipMap` (PathOwnership with confidence-scored owners + bus_factor + decay_warnings) -> `github.py` maps emails to @handles and resolves teams -> `state.py` persists the inferred map at `~/.checkowners/state.json` -> downstream commands (`drift`, `decay`, `bus-factor`, `topology`, `balance`, `onboard`) read state and emit per-domain reports. CODEOWNERS auto-detected at: `.github/CODEOWNERS`, `CODEOWNERS` (root), or `docs/CODEOWNERS`.
 
 ## Conventions
 
-- Functional style throughout; no classes except dataclasses in `models.py`
+- Functional style throughout; no classes except dataclasses in `models.py` (and small frozen dataclasses inside modules for return types)
 - Type hints on every function signature; strict mypy (`--strict`)
 - All file paths via `pathlib.Path`, never hardcoded strings
+- All CLI commands support `--json` for structured JSON output
 - Config file: `.github/checkowners.yml` (per-repo; loaded via `config.py`)
-- State file: `~/.checkowners/state.json` (auto-maintained; never hardcode path)
+- State file: `~/.checkowners/state.json` (auto-maintained; never hardcode the path — use `state.py`; override via `CHECKOWNERS_STATE_DIR` for tests)
 - Every write to `.github/CODEOWNERS` must include: `# Generated by checkOwners. Do not edit manually.`
-- Default exclusions: `*.lock`, `dist/**`, `vendor/**`
-- Config defaults: `lookback_days: 180`, `min_commits: 3`, `top_n_owners: 2`
+- Ownership is NOT binary; every path-owner pair carries a confidence score in `[0.0, 1.0]` clamped to the valid range
+- Confidence score = weighted average of recency (exponential decay, default 90-day half-life), frequency (commits / path max), blame coverage (lines attributed / total lines), and review activity (PR reviews / total reviews; 0.0 when `github.api_enabled` is false)
+- Default exclusions: `*.lock`, `dist/**`, `vendor/**`, `node_modules/**`
+- Config defaults: `lookback_days: 365`, `min_commits: 3`, `top_n_owners: 3`, `confidence_threshold: 0.3`
 - Drift state machine modes: `commit`, `repo`, `both`
+- Severity tiers (notify): low / medium / high / critical; computed from max confidence delta and bus factor / decay signals; gated by `notifications.severity_threshold`
+- Expertise decay threshold: configurable, default 180 days since last commit to flag as decaying
+- Bus factor tiers: `critical` (≤ `bus_factor.critical_threshold`, default 1), `warning` (≤ `bus_factor.warn_threshold`, default 2), `ok`
+- Knowledge graph + onboarding may rely on `networkx`; declared as the optional `[graph]` extra and lazy-imported
 
 ## Testing
 
 - Unit tests mock all subprocess calls (`git log`, `git blame`); never require a real git repo
-- Integration tests in `tests/integration/` use fixture repos created with GitPython
 - Every module has a corresponding `tests/test_<module>.py`
+- `state.py` tests isolate `~/.checkowners` via the `CHECKOWNERS_STATE_DIR` env var
+- Coverage target: 85%+ across the project
 
 ## Do NOT
 
 - Add LLM or AI dependencies; checkOwners is pure-git inference only
 - Write to `.github/CODEOWNERS` without the machine-generated header
-- Make external network calls except in `github.py` (GitHub API), `notify.py` (webhook POST), and `action.yml`
-- Use classes except dataclasses in `models.py`
+- Make external network calls except in `github.py` (GitHub user/team lookup), `notify.py` (webhook POST), `balance.py` (GitHub PR review API), `topology.py` (GitHub teams API), and `action.yml` (Action runtime)
+- Use classes except dataclasses
 - Skip type annotations on any function signature
-- Modify `state.json` schema without bumping the schema version field
+- Modify `state.json` schema without bumping `state.SCHEMA_VERSION`
+- Treat networkx as a hard dependency; it must stay opt-in via `pip install checkowners[graph]`
+- Emit a confidence score < 0.0 or > 1.0 — always clamp
+- Treat PyGithub as a hard dependency for core inference; GitHub API features stay opt-in (`github.api_enabled`)

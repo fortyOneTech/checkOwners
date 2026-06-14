@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import fnmatch
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Literal
 
@@ -16,22 +16,15 @@ Tier = Literal["critical", "warning", "ok"]
 class BusFactorReport:
     entries: tuple[BusFactor, ...]
     repo_average: float
+    config: BusFactorConfig = field(default_factory=BusFactorConfig)
 
     @property
     def critical_paths(self) -> tuple[str, ...]:
         return tuple(e.path for e in self.entries if self.tier_for(e.bus_factor) == "critical")
 
-
     def tier_for(self, bus_factor: int) -> Tier:
-        # Method preserved for explicit per-entry tier lookups by callers.
-        return _classify(
-            bus_factor,
-            critical_threshold=_DEFAULT_CONFIG.critical_threshold,
-            warn_threshold=_DEFAULT_CONFIG.warn_threshold,
-        )
-
-
-_DEFAULT_CONFIG = BusFactorConfig()
+        """Tier a bus factor against this report's configured thresholds."""
+        return classify(bus_factor, self.config)
 
 
 def compute_bus_factor(
@@ -62,7 +55,11 @@ def compute_bus_factor(
     repo_average = (
         round(sum(e.bus_factor for e in entries) / len(entries), 2) if entries else 0.0
     )
-    return BusFactorReport(entries=tuple(entries), repo_average=repo_average)
+    return BusFactorReport(
+        entries=tuple(entries),
+        repo_average=repo_average,
+        config=config.bus_factor,
+    )
 
 
 def classify(bus_factor: int, config: BusFactorConfig) -> Tier:

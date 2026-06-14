@@ -73,11 +73,11 @@ runs:
       id: run
       shell: bash
       env:
+        # checkowners reads these env vars (see checkowners/config.py): the
+        # action inputs win over whatever the repo's checkowners.yml declares.
+        CHECKOWNERS_CONFIG: ${{ inputs.config }}
         CHECKOWNERS_DRIFT_MODE: ${{ inputs.mode }}
       run: |
-        # Temporarily override drift.mode via a generated overlay so the input
-        # wins regardless of what the repo's checkowners.yml says.
-        export CHECKOWNERS_CONFIG="${{ inputs.config }}"
         checkowners drift --json > drift.json
         {
           echo "checkowners_drift<<EOF"
@@ -92,6 +92,8 @@ runs:
       id: bus_factor
       if: ${{ inputs.include_bus_factor == 'true' }}
       shell: bash
+      env:
+        CHECKOWNERS_CONFIG: ${{ inputs.config }}
       run: |
         checkowners bus-factor --all --json > bus_factor.json
         {
@@ -105,6 +107,8 @@ runs:
       id: decay
       if: ${{ inputs.include_decay == 'true' }}
       shell: bash
+      env:
+        CHECKOWNERS_CONFIG: ${{ inputs.config }}
       run: |
         checkowners decay --json > decay.json
         {

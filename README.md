@@ -12,20 +12,7 @@ Infer CODEOWNERS from git history with confidence scoring, a knowledge graph, ex
 
 ## How it works
 
-```mermaid
-flowchart LR
-    Git[Git history] --> Analyze[analyze]
-    Analyze --> State[(state.json)]
-    State --> Generate[generate]
-    State --> Drift[drift]
-    State --> Bus[bus-factor]
-    State --> Decay[decay]
-    State --> Topology[topology]
-    State --> Balance[balance]
-    State --> Onboard[onboard]
-    Generate --> CO[CODEOWNERS]
-    Drift --> CI[CI output]
-```
+`checkowners analyze` reads `git log` and `git blame` into a confidence-scored ownership map cached at `~/.checkowners/state.json`. From that map, `generate` writes a CODEOWNERS file and `drift` compares it against the committed one, while `bus-factor`, `decay`, `topology`, `balance`, `onboard`, and `trends` emit their own reports. In CI, the composite GitHub Action runs the same flow and writes structured `GITHUB_OUTPUT`. See [docs/USAGE.md](docs/USAGE.md) for the full pipeline and a diagram.
 
 ## Installation
 

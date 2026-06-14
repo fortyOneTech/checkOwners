@@ -15,9 +15,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Serialized knowledge-graph cache at `~/.checkowners/graph/<repo-hash>.json`, keyed by repo and invalidated by the analysis timestamp; the `graph` command reuses a fresh cache.
 - Composite Action posts a built-in drift + bus-factor PR comment on pull requests (`comment_on_pr` input, default `true`).
 - `docs/` directory housing detailed reference: `USAGE.md`, `FAQ.md`, `CONTRIBUTING.md`, this `CHANGELOG.md`, and the project `CODEOWNERS` (moved from `.github/CODEOWNERS`).
-- Mermaid pipeline diagram in the README showing the flow from git history through `analyze`, the persisted state, and the downstream commands.
 
 ### Changed
+- README drops its Mermaid pipeline diagram (PyPI does not render Mermaid) in favor of a prose summary; the diagram now lives in `docs/USAGE.md`.
 - `paths.exclude` default now includes `*.generated.*`.
 - Composite Action honors its `config` and `mode` inputs via the `CHECKOWNERS_CONFIG` and `CHECKOWNERS_DRIFT_MODE` environment variables, which `load_config` now reads.
 - `BusFactorReport` tiers (`tier_for` / `critical_paths`) respect the repo's configured `bus_factor` thresholds instead of hardcoded defaults.
@@ -59,10 +59,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `notify` payload includes severity, max delta, and per-entry bus factor / decay flags.
 
 ### Fixed
-- `validate` strips inline confidence comments so `output.include_confidence: true` does not fail the validator. Caught while dogfooding.
+`validate` strips inline confidence comments so `output.include_confidence: true` does not fail the validator. Caught while dogfooding.
 
 ### Security
-- `github.token` is now refused inside `.github/checkowners.yml`. `load_config` raises a clear error if the field is present, since that file gets pushed to GitHub. The only supported way to provide a token is the `GITHUB_TOKEN` environment variable.
+`github.token` is now refused inside `.github/checkowners.yml`. `load_config` raises a clear error if the field is present, since that file gets pushed to GitHub. The only supported way to provide a token is the `GITHUB_TOKEN` environment variable.
 
 ## [0.2.0] - 2026-05-26
 
@@ -74,10 +74,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [0.1.1] - 2026-05-26
 
 ### Fixed
-- Deleted files are no longer carried into the generated CODEOWNERS; `analyze` filters out paths that no longer exist on disk.
+Deleted files are no longer carried into the generated CODEOWNERS; `analyze` filters out paths that no longer exist on disk.
 
 ### Changed
-- Repo now dogfoods its own generated CODEOWNERS.
+Repo now dogfoods its own generated CODEOWNERS.
 
 ## [0.1.0] - 2026-05-26
 

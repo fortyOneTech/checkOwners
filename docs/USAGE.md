@@ -2,6 +2,25 @@
 
 Full configuration, scoring, and CI reference. For a quick command list see the [README](../README.md). For answers to common questions see [docs/FAQ.md](FAQ.md).
 
+## Pipeline
+
+```mermaid
+flowchart LR
+    Git[Git history] --> Analyze[analyze]
+    Analyze --> State[(state.json)]
+    State --> Generate[generate]
+    State --> Drift[drift]
+    State --> Bus[bus-factor]
+    State --> Decay[decay]
+    State --> Topology[topology]
+    State --> Balance[balance]
+    State --> Onboard[onboard]
+    Generate --> CO[CODEOWNERS]
+    Drift --> CI[CI output]
+```
+
+`trends` is independent of the cached state: it runs its own `git log` pass to reconstruct per-period snapshots.
+
 ## Configuration
 
 Create `.github/checkowners.yml`. Every field is optional; defaults shown.
@@ -77,7 +96,7 @@ flowchart LR
     F[Frequency] --> S
     B[Blame] --> S
     V[Reviews] --> S
-    S --> Filter{>= threshold?}
+    S --> Filter{meets threshold?}
     Filter -->|yes| Generate[CODEOWNERS owner]
     Filter -->|no| Drop[dropped]
 ```

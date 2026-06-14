@@ -66,9 +66,7 @@ def build_graph(
 def to_serializable(graph: nx.Graph) -> dict[str, list[dict[str, object]]]:
     """Serialize a graph to a plain node/edge dict (JSON-friendly, version-stable)."""
     nodes = [{"id": node, **attrs} for node, attrs in graph.nodes(data=True)]
-    edges = [
-        {"source": u, "target": v, **attrs} for u, v, attrs in graph.edges(data=True)
-    ]
+    edges = [{"source": u, "target": v, **attrs} for u, v, attrs in graph.edges(data=True)]
     return {"nodes": nodes, "edges": edges}
 
 

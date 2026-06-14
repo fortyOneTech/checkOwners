@@ -56,7 +56,7 @@ from checkowners.trends import TrendPoint, analyze_trends
 from checkowners.validate import validate_codeowners
 
 if TYPE_CHECKING:
-    import networkx as nx
+    import networkx as nx  # type: ignore[import-untyped]
 
 app = typer.Typer(
     name="checkowners",
@@ -880,9 +880,7 @@ def trends(
     """Show how ownership confidence and bus factor have evolved over time."""
     config = load_config()
     try:
-        report = analyze_trends(
-            Path.cwd(), config, periods=periods, period_days=period_days
-        )
+        report = analyze_trends(Path.cwd(), config, periods=periods, period_days=period_days)
     except subprocess.CalledProcessError as exc:
         console.print(f"[red]Git command failed:[/red] {exc}")
         raise typer.Exit(code=1) from None

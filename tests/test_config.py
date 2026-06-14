@@ -204,18 +204,14 @@ def test_drift_mode_env_override_invalid_rejected(
         load_config(repo_root=tmp_path)
 
 
-def test_config_path_env_override_relative(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_config_path_env_override_relative(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / "custom.yml").write_text("analysis:\n  min_commits: 7\n", encoding="utf-8")
     monkeypatch.setenv("CHECKOWNERS_CONFIG", "custom.yml")
     cfg = load_config(repo_root=tmp_path)
     assert cfg.analysis.min_commits == 7
 
 
-def test_config_path_env_override_absolute(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_config_path_env_override_absolute(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     custom = tmp_path / "elsewhere" / "co.yml"
     custom.parent.mkdir()
     custom.write_text("analysis:\n  top_n_owners: 9\n", encoding="utf-8")

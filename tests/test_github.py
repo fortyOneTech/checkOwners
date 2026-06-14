@@ -78,16 +78,6 @@ def test_build_review_coverage_empty_when_no_handles_resolve() -> None:
         assert build_review_coverage("tok", "org/repo", {"a@example.com"}) == {}
 
 
-def test_get_github_token_config_fallback() -> None:
-    with patch.dict("os.environ", {}, clear=True):
-        assert get_github_token("ghp_fromconfig") == "ghp_fromconfig"
-
-
-def test_get_github_token_env_precedence_over_config() -> None:
-    with patch.dict("os.environ", {"GITHUB_TOKEN": "ghp_fromenv"}):
-        assert get_github_token("ghp_fromconfig") == "ghp_fromenv"
-
-
 def test_get_github_client_with_token() -> None:
     with patch("github.Github") as mock_cls:
         client = get_github_client("ghp_test")

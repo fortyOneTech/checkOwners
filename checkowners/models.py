@@ -77,7 +77,6 @@ class GithubConfig:
     resolve_handles: bool = True
     resolve_teams: bool = True
     api_enabled: bool = False
-    token: str = ""
 
 
 @dataclass(frozen=True)

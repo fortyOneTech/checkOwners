@@ -72,7 +72,7 @@ def _resolve_github_owners(ownership: OwnershipMap, config: Config) -> Ownership
     """Replace email handles with GitHub @handles when a token is available."""
     if not config.github.resolve_handles:
         return ownership
-    token = get_github_token(config.github.token)
+    token = get_github_token()
     if not token:
         return ownership
     handle_map = ownership.handles_only()
@@ -183,7 +183,7 @@ def _review_provider(config: Config) -> ReviewProvider | None:
     repo_full_name = os.environ.get("GITHUB_REPOSITORY", "")
     if not repo_full_name:
         return None
-    token = get_github_token(config.github.token)
+    token = get_github_token()
     if not token:
         return None
 
@@ -243,7 +243,7 @@ def generate(json_output: JsonOption = False) -> None:
     repo_root = Path.cwd()
     codeowners_path = find_codeowners_path(repo_root)
     ownership = _run_analyze(config, repo_root)
-    token = get_github_token(config.github.token)
+    token = get_github_token()
     content = generate_codeowners(
         repo_root,
         ownership,
@@ -394,7 +394,7 @@ def sync(json_output: JsonOption = False) -> None:
     repo_root = Path.cwd()
     codeowners_path = find_codeowners_path(repo_root)
     ownership = _run_analyze(config, repo_root)
-    token = get_github_token(config.github.token)
+    token = get_github_token()
     content = generate_codeowners(
         repo_root,
         ownership,

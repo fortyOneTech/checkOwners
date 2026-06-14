@@ -247,29 +247,10 @@ def test_load_config_github_section(tmp_path: Path) -> None:
     assert cfg.github.api_enabled is False
 
 
-def test_load_config_github_token_env_interpolation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("MY_GH_TOKEN", "ghp_fromenv")
-    root = _write_config(tmp_path, "github:\n  token: ${MY_GH_TOKEN}\n")
-    cfg = load_config(repo_root=root)
-    assert cfg.github.token == "ghp_fromenv"
-
-
-def test_load_config_github_token_env_missing_resolves_empty(tmp_path: Path) -> None:
-    root = _write_config(tmp_path, "github:\n  token: ${DOES_NOT_EXIST}\n")
-    cfg = load_config(repo_root=root)
-    assert cfg.github.token == ""
-
-
-def test_load_config_github_token_literal_accepted_with_warning(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
-) -> None:
-    root = _write_config(tmp_path, "github:\n  token: ghp_literalsecret\n")
-    with caplog.at_level("WARNING"):
-        cfg = load_config(repo_root=root)
-    assert cfg.github.token == "ghp_literalsecret"
-    assert any("literal" in rec.message for rec in caplog.records)
+def test_load_config_github_token_rejected(tmp_path: Path) -> None:
+    root = _write_config(tmp_path, "github:\n  token: ghp_secret\n")
+    with pytest.raises(ValueError, match="github.token is not accepted"):
+        load_config(repo_root=root)
 
 
 def test_load_config_scoring_section(tmp_path: Path) -> None:

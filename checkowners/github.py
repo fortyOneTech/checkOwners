@@ -13,14 +13,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def get_github_token(config_token: str = "") -> str:
-    """Resolve a GitHub token.
+def get_github_token() -> str:
+    """Read GITHUB_TOKEN from environment.
 
-    The ``GITHUB_TOKEN`` environment variable takes precedence; otherwise the
-    token resolved from ``github.token`` in checkowners.yml (already expanded
-    from any ``${ENV_VAR}`` reference by config.py) is used.
+    The token is intentionally never read from checkowners.yml: that file is
+    typically committed to git, so a token there would leak the secret.
     """
-    return os.environ.get("GITHUB_TOKEN", "") or config_token
+    return os.environ.get("GITHUB_TOKEN", "")
 
 
 def get_github_client(token: str) -> Github | None:

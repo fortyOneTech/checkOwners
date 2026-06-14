@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import logging
 import os
-import re
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
@@ -25,8 +23,6 @@ from checkowners.models import (
     ScoringConfig,
     Severity,
 )
-
-logger = logging.getLogger(__name__)
 
 CONFIG_FILENAME = ".github/checkowners.yml"
 
@@ -215,6 +211,13 @@ def _build_notifications_config(data: dict[str, Any]) -> NotificationsConfig:
 
 
 def _build_github_config(data: dict[str, Any]) -> GithubConfig:
+    if "token" in data:
+        msg = (
+            "github.token is not accepted in checkowners.yml: this file is "
+            "typically committed to git, so storing a token there leaks the "
+            "secret. Set the GITHUB_TOKEN environment variable instead."
+        )
+        raise ValueError(msg)
     kwargs: dict[str, Any] = {}
     if "org" in data:
         kwargs["org"] = str(data["org"])
@@ -224,30 +227,4 @@ def _build_github_config(data: dict[str, Any]) -> GithubConfig:
         kwargs["resolve_teams"] = bool(data["resolve_teams"])
     if "api_enabled" in data:
         kwargs["api_enabled"] = bool(data["api_enabled"])
-    if "token" in data and data["token"] is not None:
-        kwargs["token"] = _resolve_token(str(data["token"]))
     return GithubConfig(**kwargs)
-
-
-_ENV_TOKEN_RE = re.compile(r"^\$\{(\w+)\}$")
-
-
-def _resolve_token(raw: str) -> str:
-    """Resolve a configured github.token value.
-
-    The recommended form is an environment-variable reference such as
-    ``${GITHUB_TOKEN}``, which is expanded here. A literal token is accepted
-    (per project policy) but warns loudly, since checkowners.yml is normally
-    committed to git and a literal secret would leak.
-    """
-    stripped = raw.strip()
-    match = _ENV_TOKEN_RE.match(stripped)
-    if match:
-        return os.environ.get(match.group(1), "")
-    if stripped:
-        logger.warning(
-            "github.token in checkowners.yml is a literal value; this file is "
-            "usually committed to git, so a literal token leaks the secret. "
-            "Prefer the ${ENV_VAR} form (e.g. token: ${GITHUB_TOKEN})."
-        )
-    return stripped

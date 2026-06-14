@@ -152,7 +152,7 @@ def _fetch_teams(github: GithubConfig) -> dict[str, frozenset[str]] | None:
         )
     except ImportError:
         return None
-    token = get_github_token(github.token)
+    token = get_github_token()
     if not token:
         return None
     client = get_github_client(token)

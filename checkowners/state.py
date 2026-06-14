@@ -175,7 +175,7 @@ def _deserialize_owner(raw: dict[str, Any]) -> OwnerEntry | None:
     confidence = raw.get("confidence")
     commits = raw.get("commits")
     last_commit_raw = raw.get("last_commit")
-    if not isinstance(handle, str) or not isinstance(confidence, (int, float)):
+    if not isinstance(handle, str) or not isinstance(confidence, int | float):
         return None
     if not isinstance(commits, int):
         return None

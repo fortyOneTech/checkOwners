@@ -52,6 +52,7 @@ from checkowners.topology import (
     declared_teams_from_github,
     infer_topology,
 )
+from checkowners.trends import TrendPoint, analyze_trends
 from checkowners.validate import validate_codeowners
 
 if TYPE_CHECKING:
@@ -849,6 +850,68 @@ def expertise(
             f"{rank.confidence:.2f}",
             str(rank.commits),
             _format_last_commit(rank.last_commit),
+        )
+    console.print(table)
+
+
+def _trend_point_payload(point: TrendPoint) -> dict[str, Any]:
+    return {
+        "period_end": point.period_end.date().isoformat(),
+        "commits": point.commits,
+        "active_contributors": point.active_contributors,
+        "tracked_paths": point.tracked_paths,
+        "avg_top_confidence": point.avg_top_confidence,
+        "avg_bus_factor": point.avg_bus_factor,
+    }
+
+
+@app.command()
+def trends(
+    periods: Annotated[
+        int,
+        typer.Option("--periods", min=1, max=36, help="Number of periods to report."),
+    ] = 6,
+    period_days: Annotated[
+        int,
+        typer.Option("--period-days", min=1, help="Length of each period in days."),
+    ] = 30,
+    json_output: JsonOption = False,
+) -> None:
+    """Show how ownership confidence and bus factor have evolved over time."""
+    config = load_config()
+    try:
+        report = analyze_trends(
+            Path.cwd(), config, periods=periods, period_days=period_days
+        )
+    except subprocess.CalledProcessError as exc:
+        console.print(f"[red]Git command failed:[/red] {exc}")
+        raise typer.Exit(code=1) from None
+    if json_output:
+        data = {
+            "periods": report.periods,
+            "period_days": report.period_days,
+            "points": [_trend_point_payload(p) for p in report.points],
+        }
+        typer.echo(json.dumps(data, indent=2))
+        return
+    if not report.points:
+        console.print("[yellow]No history available for the requested range.[/yellow]")
+        return
+    table = Table(title=f"Ownership Trends ({report.periods}x{report.period_days}d)")
+    table.add_column("Period end", style="cyan")
+    table.add_column("Commits", justify="right")
+    table.add_column("Contributors", justify="right")
+    table.add_column("Tracked paths", justify="right")
+    table.add_column("Avg top conf.", justify="right")
+    table.add_column("Avg bus factor", justify="right")
+    for point in report.points:
+        table.add_row(
+            point.period_end.date().isoformat(),
+            str(point.commits),
+            str(point.active_contributors),
+            str(point.tracked_paths),
+            f"[{_confidence_style(point.avg_top_confidence)}]{point.avg_top_confidence:.2f}[/]",
+            f"{point.avg_bus_factor:.2f}",
         )
     console.print(table)
 

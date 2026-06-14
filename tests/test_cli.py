@@ -20,6 +20,7 @@ from checkowners.models import (
     OwnershipMap,
     PathOwnership,
 )
+from checkowners.trends import TrendPoint, TrendReport
 
 runner = CliRunner()
 
@@ -388,3 +389,48 @@ def test_github_action_clean_exits_zero() -> None:
     ):
         result = runner.invoke(app, ["github-action"])
     assert result.exit_code == 0
+
+
+# --- trends ---
+
+
+_TREND_REPORT = TrendReport(
+    points=(
+        TrendPoint(
+            period_end=datetime(2026, 4, 1, tzinfo=UTC),
+            commits=10,
+            active_contributors=2,
+            tracked_paths=3,
+            avg_top_confidence=0.6,
+            avg_bus_factor=1.5,
+        ),
+        TrendPoint(
+            period_end=datetime(2026, 5, 1, tzinfo=UTC),
+            commits=18,
+            active_contributors=3,
+            tracked_paths=4,
+            avg_top_confidence=0.72,
+            avg_bus_factor=1.8,
+        ),
+    ),
+    periods=2,
+    period_days=30,
+)
+
+
+def test_trends_table() -> None:
+    with patch("checkowners.cli.analyze_trends", return_value=_TREND_REPORT):
+        result = runner.invoke(app, ["trends", "--periods", "2", "--period-days", "30"])
+    assert result.exit_code == 0
+    assert "2026-04-01" in result.stdout
+    assert "0.72" in result.stdout
+
+
+def test_trends_json() -> None:
+    with patch("checkowners.cli.analyze_trends", return_value=_TREND_REPORT):
+        result = runner.invoke(app, ["trends", "--json"])
+    assert result.exit_code == 0
+    data = json.loads(result.stdout)
+    assert data["periods"] == 2
+    assert data["points"][1]["avg_top_confidence"] == 0.72
+    assert data["points"][0]["active_contributors"] == 2

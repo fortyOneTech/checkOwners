@@ -7,7 +7,7 @@ import os
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
 from rich.console import Console
@@ -22,7 +22,14 @@ from checkowners.drift import detect_drift
 from checkowners.expertise import rank_expertise
 from checkowners.generate import generate_codeowners
 from checkowners.github import build_review_coverage, get_github_token, map_owners
-from checkowners.graph import GraphExtraMissingError, build_graph, to_dot, to_text
+from checkowners.graph import (
+    GraphExtraMissingError,
+    build_graph,
+    from_serializable,
+    to_dot,
+    to_serializable,
+    to_text,
+)
 from checkowners.models import (
     Config,
     DriftEntry,
@@ -34,13 +41,21 @@ from checkowners.models import (
 )
 from checkowners.notify import compute_severity, send_notification
 from checkowners.onboard import OnboardingPath, generate_onboarding_path
-from checkowners.state import load_ownership, write_state
+from checkowners.state import (
+    load_ownership,
+    read_graph_cache,
+    write_graph_cache,
+    write_state,
+)
 from checkowners.topology import (
     TopologyReport,
     declared_teams_from_github,
     infer_topology,
 )
 from checkowners.validate import validate_codeowners
+
+if TYPE_CHECKING:
+    import networkx as nx
 
 app = typer.Typer(
     name="checkowners",
@@ -501,6 +516,16 @@ def _decay_report_payload(report: DecayReport) -> dict[str, Any]:
     }
 
 
+def _build_or_load_graph(repo_root: Path, ownership: OwnershipMap) -> nx.Graph:
+    """Return the knowledge graph, reusing a fresh on-disk cache when available."""
+    cached = read_graph_cache(repo_root, ownership.last_analyzed)
+    if cached is not None:
+        return from_serializable(cached)
+    graph_obj = build_graph(ownership)
+    write_graph_cache(repo_root, ownership.last_analyzed, to_serializable(graph_obj))
+    return graph_obj
+
+
 @app.command()
 def graph(
     export: Annotated[
@@ -514,9 +539,10 @@ def graph(
 ) -> None:
     """Render the contributor-file knowledge graph in the terminal."""
     config = load_config()
-    ownership = _load_or_analyze(config, Path.cwd())
+    repo_root = Path.cwd()
+    ownership = _load_or_analyze(config, repo_root)
     try:
-        graph_obj = build_graph(ownership)
+        graph_obj = _build_or_load_graph(repo_root, ownership)
     except GraphExtraMissingError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=1) from None

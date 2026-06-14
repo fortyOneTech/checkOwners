@@ -10,6 +10,7 @@ ignored and a fresh state replaces them on the next analyze.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from dataclasses import asdict
@@ -30,13 +31,59 @@ from checkowners.models import (
 SCHEMA_VERSION: int = 2
 _STATE_DIR = Path.home() / ".checkowners"
 _STATE_FILENAME = "state.json"
+_GRAPH_CACHE_SUBDIR = "graph"
+
+
+def _base_dir() -> Path:
+    """Resolve the checkowners state directory, honoring CHECKOWNERS_STATE_DIR."""
+    override = os.environ.get("CHECKOWNERS_STATE_DIR")
+    return Path(override) if override else _STATE_DIR
 
 
 def _state_path() -> Path:
     """Resolve the state file path, honoring CHECKOWNERS_STATE_DIR override."""
-    override = os.environ.get("CHECKOWNERS_STATE_DIR")
-    base = Path(override) if override else _STATE_DIR
-    return base / _STATE_FILENAME
+    return _base_dir() / _STATE_FILENAME
+
+
+def _graph_cache_path(repo_root: Path) -> Path:
+    """Resolve the serialized-graph cache path for a repo (keyed by repo hash)."""
+    digest = hashlib.sha256(str(repo_root.resolve()).encode("utf-8")).hexdigest()[:16]
+    return _base_dir() / _GRAPH_CACHE_SUBDIR / f"{digest}.json"
+
+
+def write_graph_cache(repo_root: Path, last_analyzed: datetime, graph_data: dict[str, Any]) -> Path:
+    """Persist a serialized knowledge graph, tagged with the analysis timestamp."""
+    target = _graph_cache_path(repo_root)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "schema_version": SCHEMA_VERSION,
+        "repo": str(repo_root.resolve()),
+        "last_analyzed": last_analyzed.astimezone(UTC).isoformat(),
+        "graph": graph_data,
+    }
+    target.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    return target
+
+
+def read_graph_cache(repo_root: Path, last_analyzed: datetime) -> dict[str, Any] | None:
+    """Return the cached graph for a repo when present and not stale, else None.
+
+    Freshness is keyed on the analysis timestamp: a cache built from an older
+    ``analyze`` run is ignored so the graph never lags the ownership map.
+    """
+    target = _graph_cache_path(repo_root)
+    if not target.exists():
+        return None
+    try:
+        data: Any = json.loads(target.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict) or data.get("schema_version") != SCHEMA_VERSION:
+        return None
+    if data.get("last_analyzed") != last_analyzed.astimezone(UTC).isoformat():
+        return None
+    graph = data.get("graph")
+    return graph if isinstance(graph, dict) else None
 
 
 def read_state() -> dict[str, Any] | None:

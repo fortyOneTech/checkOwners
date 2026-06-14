@@ -5,7 +5,7 @@ Thanks for thinking about contributing. checkowners is a pure-git ownership infe
 ## Quick start
 
 ```bash
-git clone https://github.com/smusali/checkowners.git
+git clone https://github.com/fortyOneTech/checkowners.git
 cd checkowners
 pip install hatch
 hatch run test
@@ -77,7 +77,7 @@ For the architecture overview and module map, see [CLAUDE.md](../CLAUDE.md).
 
 ## Reporting bugs
 
-Open an issue at <https://github.com/smusali/checkowners/issues> with:
+Open an issue at <https://github.com/fortyOneTech/checkowners/issues> with:
 
 1. The command you ran and the `--json` output if available.
 2. The relevant `.github/checkowners.yml` (redact tokens; we don't accept them in this file anyway).
@@ -86,7 +86,7 @@ Open an issue at <https://github.com/smusali/checkowners/issues> with:
 
 ## Security issues
 
-Do not open public issues for vulnerabilities. Email <samir.musali@gmail.com> with a description and a proof-of-concept. We will respond and coordinate disclosure.
+Do not open public issues for vulnerabilities. Email <fortyone.technologies@gmail.com> with a description and a proof-of-concept. We will respond and coordinate disclosure.
 
 ## Releasing
 

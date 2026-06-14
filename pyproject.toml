@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "checkowners"
-version = "0.3.0"
+version = "0.4.0"
 description = "Infer CODEOWNERS from git history with confidence scoring, knowledge graphs, expertise decay detection, bus factor analysis, and team topology inference. CI-native."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
-    { name = "Samir Musali", email = "samir.musali@gmail.com" },
+    { name = "Samir Musali", email = "fortyone.technologies@gmail.com" },
 ]
 keywords = [
     "codeowners",
@@ -53,9 +53,9 @@ graph = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/smusali/checkowners"
-Issues = "https://github.com/smusali/checkowners/issues"
-Source = "https://github.com/smusali/checkowners"
+Homepage = "https://github.com/fortyOneTech/checkowners"
+Issues = "https://github.com/fortyOneTech/checkowners/issues"
+Source = "https://github.com/fortyOneTech/checkowners"
 
 [project.scripts]
 checkowners = "checkowners.cli:main"

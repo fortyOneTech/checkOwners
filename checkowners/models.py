@@ -46,6 +46,7 @@ class PathsConfig:
         "dist/**",
         "vendor/**",
         "node_modules/**",
+        "*.generated.*",
     )
 
 

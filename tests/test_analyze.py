@@ -96,6 +96,55 @@ def test_analyze_basic_confidence_scoring() -> None:
     assert utils_owners[0].handle == "alice@example.com"
 
 
+def test_analyze_review_provider_feeds_review_factor() -> None:
+    commits = [
+        ("alice@example.com", _RECENT, ["src/main.py"]),
+        ("alice@example.com", _RECENT, ["src/main.py"]),
+        ("alice@example.com", _RECENT, ["src/main.py"]),
+    ]
+    stdout = _make_git_log_output(commits)
+    config = Config(
+        analysis=AnalysisConfig(min_commits=1, top_n_owners=2, confidence_threshold=0.0),
+        scoring=ScoringConfig(review_weight=0.5),
+    )
+
+    captured: dict[str, set[str]] = {}
+
+    def provider(emails: set[str]) -> dict[str, dict[str, float]]:
+        captured["emails"] = emails
+        return {"src/main.py": {"alice@example.com": 1.0}}
+
+    with (
+        patch(_MOCK_GIT, return_value=_mock_run(stdout)),
+        patch(_MOCK_EXIST, side_effect=_passthrough),
+        patch(_MOCK_BLAME, side_effect=_no_blame),
+    ):
+        result = analyze_ownership(Path("/fake"), config, review_provider=provider)
+
+    alice = result.paths["src/main.py"].owners[0]
+    assert alice.handle == "alice@example.com"
+    assert alice.score_breakdown is not None
+    assert alice.score_breakdown.review == 1.0
+    assert captured["emails"] == {"alice@example.com"}
+
+
+def test_analyze_review_factor_zero_without_provider() -> None:
+    commits = [("alice@example.com", _RECENT, ["src/main.py"])]
+    stdout = _make_git_log_output(commits)
+    config = Config(analysis=AnalysisConfig(min_commits=1, confidence_threshold=0.0))
+
+    with (
+        patch(_MOCK_GIT, return_value=_mock_run(stdout)),
+        patch(_MOCK_EXIST, side_effect=_passthrough),
+        patch(_MOCK_BLAME, side_effect=_no_blame),
+    ):
+        result = analyze_ownership(Path("/fake"), config)
+
+    breakdown = result.paths["src/main.py"].owners[0].score_breakdown
+    assert breakdown is not None
+    assert breakdown.review == 0.0
+
+
 def test_analyze_lookback_days() -> None:
     config = Config(analysis=AnalysisConfig(lookback_days=90, min_commits=1))
 

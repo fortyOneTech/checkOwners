@@ -11,7 +11,9 @@ import checkowners.graph as graph_module
 from checkowners.graph import (
     GraphExtraMissingError,
     build_graph,
+    from_serializable,
     to_dot,
+    to_serializable,
     to_text,
 )
 from checkowners.models import (
@@ -73,6 +75,16 @@ def test_build_graph_includes_clusters() -> None:
     assert graph.has_node("team::backend")
     assert graph.has_edge("contrib::@alice", "team::backend")
     assert graph.has_edge("team::backend", "path::/src/api.py")
+
+
+def test_serializable_roundtrip_preserves_nodes_and_edges() -> None:
+    original = build_graph(_ownership())
+    data = to_serializable(original)
+    restored = from_serializable(data)
+    assert set(restored.nodes) == set(original.nodes)
+    assert set(map(frozenset, restored.edges)) == set(map(frozenset, original.edges))
+    # Edge attributes survive the round trip.
+    assert restored["contrib::@alice"]["path::/src/api.py"]["weight"] == 0.9
 
 
 def test_to_text_lists_partitions() -> None:

@@ -1,6 +1,6 @@
 # checkowners
 
-[![CI](https://github.com/smusali/checkowners/actions/workflows/ci.yml/badge.svg)](https://github.com/smusali/checkowners/actions/workflows/ci.yml)
+[![CI](https://github.com/fortyOneTech/checkowners/actions/workflows/ci.yml/badge.svg)](https://github.com/fortyOneTech/checkowners/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/checkowners.svg)](https://pypi.org/project/checkowners/)
 [![PyPI downloads](https://img.shields.io/pypi/dm/checkowners.svg)](https://pypi.org/project/checkowners/)
 [![Python versions](https://img.shields.io/pypi/pyversions/checkowners.svg)](https://pypi.org/project/checkowners/)
@@ -12,20 +12,7 @@ Infer CODEOWNERS from git history with confidence scoring, a knowledge graph, ex
 
 ## How it works
 
-```mermaid
-flowchart LR
-    Git[Git history] --> Analyze[analyze]
-    Analyze --> State[(state.json)]
-    State --> Generate[generate]
-    State --> Drift[drift]
-    State --> Bus[bus-factor]
-    State --> Decay[decay]
-    State --> Topology[topology]
-    State --> Balance[balance]
-    State --> Onboard[onboard]
-    Generate --> CO[CODEOWNERS]
-    Drift --> CI[CI output]
-```
+`checkowners analyze` reads `git log` and `git blame` into a confidence-scored ownership map cached at `~/.checkowners/state.json`. From that map, `generate` writes a CODEOWNERS file and `drift` compares it against the committed one, while `bus-factor`, `decay`, `topology`, `balance`, `onboard`, and `trends` emit their own reports. In CI, the composite GitHub Action runs the same flow and writes structured `GITHUB_OUTPUT`. See [docs/USAGE.md](docs/USAGE.md) for the full pipeline and a diagram.
 
 ## Installation
 
@@ -70,6 +57,8 @@ All commands accept `--json` and persist their results to `~/.checkowners/state.
 | `checkowners topology` | Infer team boundaries from commit co-occurrence |
 | `checkowners balance` | Detect overloaded reviewers and propose rebalancing |
 | `checkowners onboard <path>` | Generate a learning path from broad-ownership to deep-expertise files |
+| `checkowners trends [--periods N] [--period-days D]` | Show how ownership confidence and bus factor have evolved over time |
+| `checkowners github-action` | Run the full CI flow and write `GITHUB_OUTPUT`; used by the composite Action |
 
 ## Documentation
 

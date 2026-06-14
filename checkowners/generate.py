@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from checkowners.models import Config, OwnerEntry, OwnershipMap, PathOwnership
+from checkowners.models import Config, OwnerEntry, OwnershipMap
 
 _DEFAULT_CODEOWNERS_PATH = ".github/CODEOWNERS"
 
@@ -110,7 +110,3 @@ def _normalize_path(path: str) -> str:
 def _write_codeowners(codeowners_path: Path, content: str) -> None:
     codeowners_path.parent.mkdir(parents=True, exist_ok=True)
     codeowners_path.write_text(content, encoding="utf-8")
-
-
-def _owners_for_path(po: PathOwnership) -> tuple[OwnerEntry, ...]:
-    return po.owners

@@ -6,16 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-14
+
 ### Added
+- `checkowners github-action`: runs the full CI flow (`analyze` -> `drift` -> `bus-factor` -> `decay`) in one command, writes the `checkowners_drift`, `bus_factor_summary`, and `decay_summary` keys to `GITHUB_OUTPUT`, and exits non-zero on drift by default (`--no-fail-on-drift` to override).
+- `checkowners trends [--periods N] [--period-days D]`: reconstructs the ownership snapshot at the end of each of the last N periods from a single `git log` pass and reports commits, active contributors, tracked paths, average top-owner confidence, and average bus factor over time.
+- Review-activity factor of the confidence score is now populated (it was previously always 0.0). When `github.api_enabled`, a token resolves, and `GITHUB_REPOSITORY` is set, closed-PR reviews are aggregated per changed file and folded into the score; the factor stays 0.0 otherwise.
+- Serialized knowledge-graph cache at `~/.checkowners/graph/<repo-hash>.json`, keyed by repo and invalidated by the analysis timestamp; the `graph` command reuses a fresh cache.
+- Composite Action posts a built-in drift + bus-factor PR comment on pull requests (`comment_on_pr` input, default `true`).
 - `docs/` directory housing detailed reference: `USAGE.md`, `FAQ.md`, `CONTRIBUTING.md`, this `CHANGELOG.md`, and the project `CODEOWNERS` (moved from `.github/CODEOWNERS`).
-- Mermaid pipeline diagram in the README showing the flow from git history through `analyze`, the persisted state, and the seven downstream commands.
 
 ### Changed
+- README drops its Mermaid pipeline diagram (PyPI does not render Mermaid) in favor of a prose summary; the diagram now lives in `docs/USAGE.md`.
+- `paths.exclude` default now includes `*.generated.*`.
+- Composite Action honors its `config` and `mode` inputs via the `CHECKOWNERS_CONFIG` and `CHECKOWNERS_DRIFT_MODE` environment variables, which `load_config` now reads.
+- `BusFactorReport` tiers (`tier_for` / `critical_paths`) respect the repo's configured `bus_factor` thresholds instead of hardcoded defaults.
 - README slimmed to intro, install, quick start, command table, and links to the new `docs/`.
+- Dogfood config sets `output.include_confidence: false` so the committed `CODEOWNERS` no longer publishes a per-file confidence/bus-factor map.
 - All Markdown across the repo follows a tightened style: no em dashes, no typographic `--` separators, multi-entry bullets only.
 
 ### Fixed
 - CI smoke job: `pip install "dist/checkowners-"*"-py3-none-any.whl[graph]"` failed because bash treated `[graph]` as a glob character class and never expanded the wildcard. The wheel path is now resolved via `ls` before installation.
+- Removed dead `generate._owners_for_path` helper.
+
+### Security
+- `notifications.webhook_url` accepts a `${ENV_VAR}` reference (e.g. `${CHECKOWNERS_WEBHOOK_URL}`) so a committed config can point at a secret/internal endpoint without storing it; an unset variable resolves to "".
+- `.checkowners/` is git-ignored so a state or graph cache (contributor emails + ownership map) cannot be committed if `CHECKOWNERS_STATE_DIR` points inside a repo.
+- `github.token` remains refused inside `.github/checkowners.yml`; the only supported way to provide a token is the `GITHUB_TOKEN` environment variable.
 
 ## [0.3.0] - 2026-05-28
 
@@ -42,10 +59,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `notify` payload includes severity, max delta, and per-entry bus factor / decay flags.
 
 ### Fixed
-- `validate` strips inline confidence comments so `output.include_confidence: true` does not fail the validator. Caught while dogfooding.
+`validate` strips inline confidence comments so `output.include_confidence: true` does not fail the validator. Caught while dogfooding.
 
 ### Security
-- `github.token` is now refused inside `.github/checkowners.yml`. `load_config` raises a clear error if the field is present, since that file gets pushed to GitHub. The only supported way to provide a token is the `GITHUB_TOKEN` environment variable.
+`github.token` is now refused inside `.github/checkowners.yml`. `load_config` raises a clear error if the field is present, since that file gets pushed to GitHub. The only supported way to provide a token is the `GITHUB_TOKEN` environment variable.
 
 ## [0.2.0] - 2026-05-26
 
@@ -57,10 +74,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [0.1.1] - 2026-05-26
 
 ### Fixed
-- Deleted files are no longer carried into the generated CODEOWNERS; `analyze` filters out paths that no longer exist on disk.
+Deleted files are no longer carried into the generated CODEOWNERS; `analyze` filters out paths that no longer exist on disk.
 
 ### Changed
-- Repo now dogfoods its own generated CODEOWNERS.
+Repo now dogfoods its own generated CODEOWNERS.
 
 ## [0.1.0] - 2026-05-26
 
@@ -72,8 +89,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Packaging via hatch; published to PyPI under `checkowners`.
 - CI workflow running tests and lint across Python 3.11, 3.12, 3.13.
 
-[Unreleased]: https://github.com/smusali/checkowners/compare/v0.3.0...HEAD
-[0.3.0]: https://github.com/smusali/checkowners/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/smusali/checkowners/compare/v0.1.1...v0.2.0
-[0.1.1]: https://github.com/smusali/checkowners/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/smusali/checkowners/releases/tag/v0.1.0
+[Unreleased]: https://github.com/fortyOneTech/checkowners/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/fortyOneTech/checkowners/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/fortyOneTech/checkowners/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/fortyOneTech/checkowners/compare/v0.1.1...v0.2.0
+[0.1.1]: https://github.com/fortyOneTech/checkowners/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/fortyOneTech/checkowners/releases/tag/v0.1.0

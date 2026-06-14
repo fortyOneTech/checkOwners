@@ -63,6 +63,27 @@ def build_graph(
     return graph
 
 
+def to_serializable(graph: nx.Graph) -> dict[str, list[dict[str, object]]]:
+    """Serialize a graph to a plain node/edge dict (JSON-friendly, version-stable)."""
+    nodes = [{"id": node, **attrs} for node, attrs in graph.nodes(data=True)]
+    edges = [{"source": u, "target": v, **attrs} for u, v, attrs in graph.edges(data=True)]
+    return {"nodes": nodes, "edges": edges}
+
+
+def from_serializable(data: dict[str, list[dict[str, object]]]) -> nx.Graph:
+    """Rebuild a graph from the dict produced by :func:`to_serializable`."""
+    nx = _require_networkx()
+    graph = nx.Graph()
+    for node in data.get("nodes", []):
+        node_id = node["id"]
+        attrs = {k: v for k, v in node.items() if k != "id"}
+        graph.add_node(node_id, **attrs)
+    for edge in data.get("edges", []):
+        attrs = {k: v for k, v in edge.items() if k not in ("source", "target")}
+        graph.add_edge(edge["source"], edge["target"], **attrs)
+    return graph
+
+
 def to_dot(graph: nx.Graph) -> str:
     """Serialize a knowledge graph to Graphviz DOT format."""
     _require_networkx()

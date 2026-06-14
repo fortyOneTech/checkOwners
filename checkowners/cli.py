@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
-from checkowners.analyze import analyze_ownership
+from checkowners.analyze import ReviewProvider, analyze_ownership
 from checkowners.balance import BalanceReport, analyze_balance
 from checkowners.busfactor import BusFactorReport, classify, compute_bus_factor
 from checkowners.config import find_codeowners_path, load_config
@@ -20,8 +21,15 @@ from checkowners.decay import DecayReport, detect_decay
 from checkowners.drift import detect_drift
 from checkowners.expertise import rank_expertise
 from checkowners.generate import generate_codeowners
-from checkowners.github import get_github_token, map_owners
-from checkowners.graph import GraphExtraMissingError, build_graph, to_dot, to_text
+from checkowners.github import build_review_coverage, get_github_token, map_owners
+from checkowners.graph import (
+    GraphExtraMissingError,
+    build_graph,
+    from_serializable,
+    to_dot,
+    to_serializable,
+    to_text,
+)
 from checkowners.models import (
     Config,
     DriftEntry,
@@ -33,13 +41,22 @@ from checkowners.models import (
 )
 from checkowners.notify import compute_severity, send_notification
 from checkowners.onboard import OnboardingPath, generate_onboarding_path
-from checkowners.state import load_ownership, write_state
+from checkowners.state import (
+    load_ownership,
+    read_graph_cache,
+    write_graph_cache,
+    write_state,
+)
 from checkowners.topology import (
     TopologyReport,
     declared_teams_from_github,
     infer_topology,
 )
+from checkowners.trends import TrendPoint, analyze_trends
 from checkowners.validate import validate_codeowners
+
+if TYPE_CHECKING:
+    import networkx as nx  # type: ignore[import-untyped]
 
 app = typer.Typer(
     name="checkowners",
@@ -155,9 +172,31 @@ def _render_ownership_table(ownership: OwnershipMap) -> None:
     console.print(table)
 
 
+def _review_provider(config: Config) -> ReviewProvider | None:
+    """Build a GitHub-backed review provider when the API is enabled.
+
+    Requires github.api_enabled, a resolvable token, and the GITHUB_REPOSITORY
+    slug (set in GitHub Actions). Returns None otherwise, leaving the review
+    factor at 0.0.
+    """
+    if not config.github.api_enabled:
+        return None
+    repo_full_name = os.environ.get("GITHUB_REPOSITORY", "")
+    if not repo_full_name:
+        return None
+    token = get_github_token()
+    if not token:
+        return None
+
+    def provider(emails: set[str]) -> dict[str, dict[str, float]]:
+        return build_review_coverage(token, repo_full_name, emails)
+
+    return provider
+
+
 def _run_analyze(config: Config, repo_root: Path) -> OwnershipMap:
     try:
-        ownership = analyze_ownership(repo_root, config)
+        ownership = analyze_ownership(repo_root, config, review_provider=_review_provider(config))
     except subprocess.CalledProcessError as exc:
         console.print(f"[red]Git command failed:[/red] {exc}")
         raise typer.Exit(code=1) from None
@@ -391,6 +430,81 @@ def sync(json_output: JsonOption = False) -> None:
         console.print(f"[green]Generated and committed {rel_path}[/green]")
 
 
+def _write_github_outputs(outputs: dict[str, Any]) -> None:
+    """Append compact JSON outputs to GITHUB_OUTPUT when running in Actions."""
+    output_file = os.environ.get("GITHUB_OUTPUT")
+    if not output_file:
+        return
+    with open(output_file, "a", encoding="utf-8") as fh:
+        for key, value in outputs.items():
+            fh.write(f"{key}={json.dumps(value, separators=(',', ':'))}\n")
+
+
+@app.command(name="github-action")
+def github_action(
+    fail_on_drift: Annotated[
+        bool,
+        typer.Option(
+            "--fail-on-drift/--no-fail-on-drift",
+            help="Exit non-zero when drift is detected.",
+        ),
+    ] = True,
+    json_output: JsonOption = False,
+) -> None:
+    """Run the full CI flow (drift + bus factor + decay) and write GITHUB_OUTPUT."""
+    config = load_config()
+    repo_root = Path.cwd()
+    codeowners_path = find_codeowners_path(repo_root)
+    ownership = _run_analyze(config, repo_root)
+
+    # detect_drift writes the `checkowners_drift` key to GITHUB_OUTPUT itself.
+    result = detect_drift(repo_root, ownership, config, codeowners_path=codeowners_path)
+    severity = compute_severity(result)
+    bus_report = compute_bus_factor(ownership, config, target=None)
+    decay_reports = detect_decay(ownership, config)
+
+    drift_payload = {
+        "drift_detected": result.drift_detected,
+        "severity": severity,
+        "max_confidence_delta": round(result.max_confidence_delta, 4),
+        "stale": [_drift_entry_payload(e) for e in result.stale],
+        "missing": [_drift_entry_payload(e) for e in result.missing],
+        "changed": [_drift_entry_payload(e) for e in result.changed],
+    }
+    bus_payload = _bus_factor_payload(bus_report, config)
+    decay_payload = {"reports": [_decay_report_payload(r) for r in decay_reports]}
+
+    _write_github_outputs(
+        {
+            "checkowners_drift": drift_payload,
+            "bus_factor_summary": bus_payload,
+            "decay_summary": decay_payload,
+        }
+    )
+
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {
+                    "checkowners_drift": drift_payload,
+                    "bus_factor_summary": bus_payload,
+                    "decay_summary": decay_payload,
+                },
+                indent=2,
+            )
+        )
+    else:
+        console.print(
+            f"[bold]drift:[/bold] {result.drift_detected} "
+            f"([{_severity_style(severity)}]{severity}[/]) "
+            f"· critical paths: {len(bus_report.critical_paths)} "
+            f"· decay warnings: {len(decay_reports)}"
+        )
+
+    if fail_on_drift and result.drift_detected:
+        raise typer.Exit(code=1)
+
+
 def _decay_report_payload(report: DecayReport) -> dict[str, Any]:
     return {
         "handle": report.warning.handle,
@@ -401,6 +515,16 @@ def _decay_report_payload(report: DecayReport) -> dict[str, Any]:
         "recommended_transfer": report.recommended_transfer,
         "departed": report.departed,
     }
+
+
+def _build_or_load_graph(repo_root: Path, ownership: OwnershipMap) -> nx.Graph:
+    """Return the knowledge graph, reusing a fresh on-disk cache when available."""
+    cached = read_graph_cache(repo_root, ownership.last_analyzed)
+    if cached is not None:
+        return from_serializable(cached)
+    graph_obj = build_graph(ownership)
+    write_graph_cache(repo_root, ownership.last_analyzed, to_serializable(graph_obj))
+    return graph_obj
 
 
 @app.command()
@@ -416,9 +540,10 @@ def graph(
 ) -> None:
     """Render the contributor-file knowledge graph in the terminal."""
     config = load_config()
-    ownership = _load_or_analyze(config, Path.cwd())
+    repo_root = Path.cwd()
+    ownership = _load_or_analyze(config, repo_root)
     try:
-        graph_obj = build_graph(ownership)
+        graph_obj = _build_or_load_graph(repo_root, ownership)
     except GraphExtraMissingError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=1) from None
@@ -725,6 +850,66 @@ def expertise(
             f"{rank.confidence:.2f}",
             str(rank.commits),
             _format_last_commit(rank.last_commit),
+        )
+    console.print(table)
+
+
+def _trend_point_payload(point: TrendPoint) -> dict[str, Any]:
+    return {
+        "period_end": point.period_end.date().isoformat(),
+        "commits": point.commits,
+        "active_contributors": point.active_contributors,
+        "tracked_paths": point.tracked_paths,
+        "avg_top_confidence": point.avg_top_confidence,
+        "avg_bus_factor": point.avg_bus_factor,
+    }
+
+
+@app.command()
+def trends(
+    periods: Annotated[
+        int,
+        typer.Option("--periods", min=1, max=36, help="Number of periods to report."),
+    ] = 6,
+    period_days: Annotated[
+        int,
+        typer.Option("--period-days", min=1, help="Length of each period in days."),
+    ] = 30,
+    json_output: JsonOption = False,
+) -> None:
+    """Show how ownership confidence and bus factor have evolved over time."""
+    config = load_config()
+    try:
+        report = analyze_trends(Path.cwd(), config, periods=periods, period_days=period_days)
+    except subprocess.CalledProcessError as exc:
+        console.print(f"[red]Git command failed:[/red] {exc}")
+        raise typer.Exit(code=1) from None
+    if json_output:
+        data = {
+            "periods": report.periods,
+            "period_days": report.period_days,
+            "points": [_trend_point_payload(p) for p in report.points],
+        }
+        typer.echo(json.dumps(data, indent=2))
+        return
+    if not report.points:
+        console.print("[yellow]No history available for the requested range.[/yellow]")
+        return
+    table = Table(title=f"Ownership Trends ({report.periods}x{report.period_days}d)")
+    table.add_column("Period end", style="cyan")
+    table.add_column("Commits", justify="right")
+    table.add_column("Contributors", justify="right")
+    table.add_column("Tracked paths", justify="right")
+    table.add_column("Avg top conf.", justify="right")
+    table.add_column("Avg bus factor", justify="right")
+    for point in report.points:
+        table.add_row(
+            point.period_end.date().isoformat(),
+            str(point.commits),
+            str(point.active_contributors),
+            str(point.tracked_paths),
+            f"[{_confidence_style(point.avg_top_confidence)}]{point.avg_top_confidence:.2f}[/]",
+            f"{point.avg_bus_factor:.2f}",
         )
     console.print(table)
 

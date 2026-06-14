@@ -97,6 +97,24 @@ def test_compute_bus_factor_critical_paths_listed() -> None:
     assert "src/shared.py" not in report.critical_paths
 
 
+def test_critical_paths_respect_custom_thresholds() -> None:
+    ownership = _ownership(
+        {
+            "src/lonely.py": (_entry("@alice", 0.95),),
+            "src/shared.py": (_entry("@alice", 0.9), _entry("@bob", 0.6)),
+        }
+    )
+    config = Config(
+        analysis=AnalysisConfig(confidence_threshold=0.3),
+        bus_factor=BusFactorConfig(critical_threshold=2, warn_threshold=3),
+    )
+    report = compute_bus_factor(ownership, config)
+    # With critical_threshold=2 both the bus-factor-1 and bus-factor-2 paths are critical.
+    assert report.config.critical_threshold == 2
+    assert report.tier_for(2) == "critical"
+    assert set(report.critical_paths) == {"src/lonely.py", "src/shared.py"}
+
+
 def test_compute_bus_factor_empty_returns_zero_average() -> None:
     ownership = OwnershipMap(paths={}, last_analyzed=_NOW)
     report = compute_bus_factor(ownership, _config())

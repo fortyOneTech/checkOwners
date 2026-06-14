@@ -22,7 +22,9 @@ from checkowners.state import (
     SCHEMA_VERSION,
     _state_path,
     load_ownership,
+    read_graph_cache,
     read_state,
+    write_graph_cache,
     write_state,
 )
 
@@ -189,3 +191,30 @@ def test_bus_factor_summary_empty() -> None:
     data = json.loads(target.read_text(encoding="utf-8"))
     assert data["bus_factor_summary"]["critical_paths"] == []
     assert data["bus_factor_summary"]["repo_average"] == 0.0
+
+
+def test_graph_cache_roundtrip(tmp_path: Path) -> None:
+    graph_data = {"nodes": [{"id": "contrib::a"}], "edges": []}
+    target = write_graph_cache(tmp_path, _NOW, graph_data)
+    assert target.exists()
+    assert read_graph_cache(tmp_path, _NOW) == graph_data
+
+
+def test_graph_cache_stale_timestamp_ignored(tmp_path: Path) -> None:
+    write_graph_cache(tmp_path, _NOW, {"nodes": [], "edges": []})
+    newer = datetime(2026, 6, 1, 0, 0, 0, tzinfo=UTC)
+    assert read_graph_cache(tmp_path, newer) is None
+
+
+def test_graph_cache_missing_returns_none(tmp_path: Path) -> None:
+    assert read_graph_cache(tmp_path, _NOW) is None
+
+
+def test_graph_cache_keyed_by_repo(tmp_path: Path) -> None:
+    repo_a = tmp_path / "a"
+    repo_b = tmp_path / "b"
+    repo_a.mkdir()
+    repo_b.mkdir()
+    write_graph_cache(repo_a, _NOW, {"nodes": [{"id": "a"}], "edges": []})
+    assert read_graph_cache(repo_b, _NOW) is None
+    assert read_graph_cache(repo_a, _NOW) == {"nodes": [{"id": "a"}], "edges": []}

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -23,6 +25,15 @@ from checkowners.models import (
 )
 
 CONFIG_FILENAME = ".github/checkowners.yml"
+
+#: Environment override for the config file location (used by the GitHub Action
+#: to honor its ``config`` input). A relative value is resolved against the repo
+#: root; an absolute value is used verbatim.
+CONFIG_ENV_VAR = "CHECKOWNERS_CONFIG"
+
+#: Environment override for ``drift.mode`` (used by the GitHub Action to honor
+#: its ``mode`` input regardless of the committed checkowners.yml).
+DRIFT_MODE_ENV_VAR = "CHECKOWNERS_DRIFT_MODE"
 
 _CODEOWNERS_CANDIDATES: tuple[str, ...] = (
     ".github/CODEOWNERS",
@@ -46,22 +57,40 @@ def find_codeowners_path(repo_root: Path) -> Path:
 
 
 def load_config(repo_root: Path | None = None) -> Config:
-    """Load configuration from .github/checkowners.yml, merging with defaults."""
+    """Load configuration, merging the YAML file with defaults and env overrides."""
     config_path = _resolve_config_path(repo_root)
     if not config_path.exists():
-        return Config()
+        return _apply_env_overrides(Config())
     raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     if raw is None:
-        return Config()
+        return _apply_env_overrides(Config())
     if not isinstance(raw, dict):
         msg = f"Invalid checkowners config: expected a YAML mapping, got {type(raw).__name__}"
         raise ValueError(msg)
-    return _merge_config(raw)
+    return _apply_env_overrides(_merge_config(raw))
 
 
 def _resolve_config_path(repo_root: Path | None) -> Path:
     root = repo_root if repo_root is not None else Path.cwd()
+    override = os.environ.get(CONFIG_ENV_VAR)
+    if override:
+        override_path = Path(override)
+        return override_path if override_path.is_absolute() else root / override_path
     return root / CONFIG_FILENAME
+
+
+def _apply_env_overrides(config: Config) -> Config:
+    """Apply environment-variable overrides on top of the loaded config."""
+    mode_override = os.environ.get(DRIFT_MODE_ENV_VAR)
+    if not mode_override:
+        return config
+    if mode_override not in _VALID_DRIFT_MODES:
+        msg = (
+            f"Invalid {DRIFT_MODE_ENV_VAR}: {mode_override!r}; "
+            f"expected one of {sorted(_VALID_DRIFT_MODES)}"
+        )
+        raise ValueError(msg)
+    return replace(config, drift=replace(config.drift, mode=cast(DriftMode, mode_override)))
 
 
 def _merge_config(raw: dict[str, Any]) -> Config:
@@ -163,10 +192,24 @@ def _build_drift_config(data: dict[str, Any]) -> DriftConfig:
     return DriftConfig(**kwargs)
 
 
+def _expand_env_ref(raw: str) -> str:
+    """Expand a ``${VAR}`` reference from the environment; pass literals through.
+
+    Lets a committed checkowners.yml point at a secret without storing it, e.g.
+    ``webhook_url: ${CHECKOWNERS_WEBHOOK_URL}``. An unset variable expands to "".
+    """
+    stripped = raw.strip()
+    if stripped.startswith("${") and stripped.endswith("}"):
+        var = stripped[2:-1]
+        if var.isidentifier():
+            return os.environ.get(var, "")
+    return raw
+
+
 def _build_notifications_config(data: dict[str, Any]) -> NotificationsConfig:
     kwargs: dict[str, Any] = {}
     if "webhook_url" in data:
-        kwargs["webhook_url"] = str(data["webhook_url"])
+        kwargs["webhook_url"] = _expand_env_ref(str(data["webhook_url"]))
     if "include_unchanged" in data:
         kwargs["include_unchanged"] = bool(data["include_unchanged"])
     if "severity_threshold" in data:

@@ -20,6 +20,7 @@ from checkowners.models import (
     OwnershipMap,
     PathOwnership,
 )
+from checkowners.trends import TrendPoint, TrendReport
 
 runner = CliRunner()
 
@@ -343,3 +344,93 @@ def test_sync_git_commit_error() -> None:
     ):
         result = runner.invoke(app, ["sync"])
     assert result.exit_code == 1
+
+
+# --- github-action ---
+
+
+def test_github_action_fails_on_drift_and_writes_output(tmp_path: Path) -> None:
+    output_file = tmp_path / "gh_output"
+    with (
+        patch("checkowners.cli.analyze_ownership", return_value=_OWNERSHIP),
+        patch("checkowners.cli.detect_drift", return_value=_DRIFT_DETECTED),
+        _MOCK_PATH,
+        _MOCK_TOKEN,
+        patch.dict("os.environ", {"GITHUB_OUTPUT": str(output_file)}),
+    ):
+        result = runner.invoke(app, ["github-action"])
+    assert result.exit_code == 1
+    written = output_file.read_text(encoding="utf-8")
+    assert "bus_factor_summary=" in written
+    assert "decay_summary=" in written
+
+
+def test_github_action_no_fail_flag(tmp_path: Path) -> None:
+    with (
+        patch("checkowners.cli.analyze_ownership", return_value=_OWNERSHIP),
+        patch("checkowners.cli.detect_drift", return_value=_DRIFT_DETECTED),
+        _MOCK_PATH,
+        _MOCK_TOKEN,
+    ):
+        result = runner.invoke(app, ["github-action", "--no-fail-on-drift", "--json"])
+    assert result.exit_code == 0
+    data = json.loads(result.stdout)
+    assert data["checkowners_drift"]["drift_detected"] is True
+    assert "bus_factor_summary" in data
+    assert "decay_summary" in data
+
+
+def test_github_action_clean_exits_zero() -> None:
+    with (
+        patch("checkowners.cli.analyze_ownership", return_value=_OWNERSHIP),
+        patch("checkowners.cli.detect_drift", return_value=_NO_DRIFT),
+        _MOCK_PATH,
+        _MOCK_TOKEN,
+    ):
+        result = runner.invoke(app, ["github-action"])
+    assert result.exit_code == 0
+
+
+# --- trends ---
+
+
+_TREND_REPORT = TrendReport(
+    points=(
+        TrendPoint(
+            period_end=datetime(2026, 4, 1, tzinfo=UTC),
+            commits=10,
+            active_contributors=2,
+            tracked_paths=3,
+            avg_top_confidence=0.6,
+            avg_bus_factor=1.5,
+        ),
+        TrendPoint(
+            period_end=datetime(2026, 5, 1, tzinfo=UTC),
+            commits=18,
+            active_contributors=3,
+            tracked_paths=4,
+            avg_top_confidence=0.72,
+            avg_bus_factor=1.8,
+        ),
+    ),
+    periods=2,
+    period_days=30,
+)
+
+
+def test_trends_table() -> None:
+    with patch("checkowners.cli.analyze_trends", return_value=_TREND_REPORT):
+        result = runner.invoke(app, ["trends", "--periods", "2", "--period-days", "30"])
+    assert result.exit_code == 0
+    assert "2026-04-01" in result.stdout
+    assert "0.72" in result.stdout
+
+
+def test_trends_json() -> None:
+    with patch("checkowners.cli.analyze_trends", return_value=_TREND_REPORT):
+        result = runner.invoke(app, ["trends", "--json"])
+    assert result.exit_code == 0
+    data = json.loads(result.stdout)
+    assert data["periods"] == 2
+    assert data["points"][1]["avg_top_confidence"] == 0.72
+    assert data["points"][0]["active_contributors"] == 2

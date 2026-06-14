@@ -28,6 +28,12 @@ inputs:
     description: Fail the action when drift_detected is true.
     required: false
     default: "true"
+  comment_on_pr:
+    description: >-
+      Post a drift + bus-factor summary comment on pull requests. Requires the
+      calling workflow to grant `pull-requests: write`.
+    required: false
+    default: "true"
   python_version:
     description: Python version to set up.
     required: false
@@ -73,11 +79,11 @@ runs:
       id: run
       shell: bash
       env:
+        # checkowners reads these env vars (see checkowners/config.py): the
+        # action inputs win over whatever the repo's checkowners.yml declares.
+        CHECKOWNERS_CONFIG: ${{ inputs.config }}
         CHECKOWNERS_DRIFT_MODE: ${{ inputs.mode }}
       run: |
-        # Temporarily override drift.mode via a generated overlay so the input
-        # wins regardless of what the repo's checkowners.yml says.
-        export CHECKOWNERS_CONFIG="${{ inputs.config }}"
         checkowners drift --json > drift.json
         {
           echo "checkowners_drift<<EOF"
@@ -92,6 +98,8 @@ runs:
       id: bus_factor
       if: ${{ inputs.include_bus_factor == 'true' }}
       shell: bash
+      env:
+        CHECKOWNERS_CONFIG: ${{ inputs.config }}
       run: |
         checkowners bus-factor --all --json > bus_factor.json
         {
@@ -105,6 +113,8 @@ runs:
       id: decay
       if: ${{ inputs.include_decay == 'true' }}
       shell: bash
+      env:
+        CHECKOWNERS_CONFIG: ${{ inputs.config }}
       run: |
         checkowners decay --json > decay.json
         {
@@ -113,6 +123,49 @@ runs:
           echo
           echo "EOF"
         } >> "$GITHUB_OUTPUT"
+
+    - name: Comment drift summary on PR
+      if: ${{ inputs.comment_on_pr == 'true' && github.event_name == 'pull_request' }}
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const drift = JSON.parse(fs.readFileSync('drift.json', 'utf8'));
+          if (!drift.drift_detected) return;
+          let critical = [];
+          try {
+            critical = (JSON.parse(fs.readFileSync('bus_factor.json', 'utf8')).critical_paths) || [];
+          } catch (e) { /* bus factor step may be disabled */ }
+          let decayCount = 0;
+          try {
+            decayCount = (JSON.parse(fs.readFileSync('decay.json', 'utf8')).reports || []).length;
+          } catch (e) { /* decay step may be disabled */ }
+          const badge = critical.length > 0 ? '**CRITICAL**' : (drift.severity || 'drift').toUpperCase();
+          const fx = (n) => Number(n).toFixed(2);
+          const body = [
+            `### checkOwners: drift detected (${badge})`,
+            '',
+            critical.length > 0 ? `> **bus_factor=1 path(s):** ${critical.join(', ')}` : '',
+            decayCount > 0 ? `> **${decayCount} expertise-decay warning(s)**` : '',
+            '',
+            '<details><summary>Drift details</summary>',
+            '',
+            '| Category | Path | Δ confidence |',
+            '|----------|------|--------------|',
+            ...(drift.stale || []).map(s => `| stale | ${s.path} | ${fx(s.confidence_delta)} |`),
+            ...(drift.missing || []).map(m => `| missing | ${m.path} | ${fx(m.confidence_delta)} |`),
+            ...(drift.changed || []).map(c => `| changed | ${c.path} | ${fx(c.confidence_delta)} |`),
+            '',
+            '</details>',
+            '',
+            'Run `checkowners sync` locally to reconcile.',
+          ].filter(Boolean).join('\n');
+          await github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body,
+          });
 
     - name: Fail on drift
       if: ${{ inputs.fail_on_drift == 'true' }}

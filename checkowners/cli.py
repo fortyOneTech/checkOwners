@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -389,6 +390,81 @@ def sync(json_output: JsonOption = False) -> None:
         typer.echo(json.dumps(data, indent=2))
     else:
         console.print(f"[green]Generated and committed {rel_path}[/green]")
+
+
+def _write_github_outputs(outputs: dict[str, Any]) -> None:
+    """Append compact JSON outputs to GITHUB_OUTPUT when running in Actions."""
+    output_file = os.environ.get("GITHUB_OUTPUT")
+    if not output_file:
+        return
+    with open(output_file, "a", encoding="utf-8") as fh:
+        for key, value in outputs.items():
+            fh.write(f"{key}={json.dumps(value, separators=(',', ':'))}\n")
+
+
+@app.command(name="github-action")
+def github_action(
+    fail_on_drift: Annotated[
+        bool,
+        typer.Option(
+            "--fail-on-drift/--no-fail-on-drift",
+            help="Exit non-zero when drift is detected.",
+        ),
+    ] = True,
+    json_output: JsonOption = False,
+) -> None:
+    """Run the full CI flow (drift + bus factor + decay) and write GITHUB_OUTPUT."""
+    config = load_config()
+    repo_root = Path.cwd()
+    codeowners_path = find_codeowners_path(repo_root)
+    ownership = _run_analyze(config, repo_root)
+
+    # detect_drift writes the `checkowners_drift` key to GITHUB_OUTPUT itself.
+    result = detect_drift(repo_root, ownership, config, codeowners_path=codeowners_path)
+    severity = compute_severity(result)
+    bus_report = compute_bus_factor(ownership, config, target=None)
+    decay_reports = detect_decay(ownership, config)
+
+    drift_payload = {
+        "drift_detected": result.drift_detected,
+        "severity": severity,
+        "max_confidence_delta": round(result.max_confidence_delta, 4),
+        "stale": [_drift_entry_payload(e) for e in result.stale],
+        "missing": [_drift_entry_payload(e) for e in result.missing],
+        "changed": [_drift_entry_payload(e) for e in result.changed],
+    }
+    bus_payload = _bus_factor_payload(bus_report, config)
+    decay_payload = {"reports": [_decay_report_payload(r) for r in decay_reports]}
+
+    _write_github_outputs(
+        {
+            "checkowners_drift": drift_payload,
+            "bus_factor_summary": bus_payload,
+            "decay_summary": decay_payload,
+        }
+    )
+
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {
+                    "checkowners_drift": drift_payload,
+                    "bus_factor_summary": bus_payload,
+                    "decay_summary": decay_payload,
+                },
+                indent=2,
+            )
+        )
+    else:
+        console.print(
+            f"[bold]drift:[/bold] {result.drift_detected} "
+            f"([{_severity_style(severity)}]{severity}[/]) "
+            f"· critical paths: {len(bus_report.critical_paths)} "
+            f"· decay warnings: {len(decay_reports)}"
+        )
+
+    if fail_on_drift and result.drift_detected:
+        raise typer.Exit(code=1)
 
 
 def _decay_report_payload(report: DecayReport) -> dict[str, Any]:

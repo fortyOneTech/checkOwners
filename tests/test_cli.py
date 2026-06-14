@@ -343,3 +343,48 @@ def test_sync_git_commit_error() -> None:
     ):
         result = runner.invoke(app, ["sync"])
     assert result.exit_code == 1
+
+
+# --- github-action ---
+
+
+def test_github_action_fails_on_drift_and_writes_output(tmp_path: Path) -> None:
+    output_file = tmp_path / "gh_output"
+    with (
+        patch("checkowners.cli.analyze_ownership", return_value=_OWNERSHIP),
+        patch("checkowners.cli.detect_drift", return_value=_DRIFT_DETECTED),
+        _MOCK_PATH,
+        _MOCK_TOKEN,
+        patch.dict("os.environ", {"GITHUB_OUTPUT": str(output_file)}),
+    ):
+        result = runner.invoke(app, ["github-action"])
+    assert result.exit_code == 1
+    written = output_file.read_text(encoding="utf-8")
+    assert "bus_factor_summary=" in written
+    assert "decay_summary=" in written
+
+
+def test_github_action_no_fail_flag(tmp_path: Path) -> None:
+    with (
+        patch("checkowners.cli.analyze_ownership", return_value=_OWNERSHIP),
+        patch("checkowners.cli.detect_drift", return_value=_DRIFT_DETECTED),
+        _MOCK_PATH,
+        _MOCK_TOKEN,
+    ):
+        result = runner.invoke(app, ["github-action", "--no-fail-on-drift", "--json"])
+    assert result.exit_code == 0
+    data = json.loads(result.stdout)
+    assert data["checkowners_drift"]["drift_detected"] is True
+    assert "bus_factor_summary" in data
+    assert "decay_summary" in data
+
+
+def test_github_action_clean_exits_zero() -> None:
+    with (
+        patch("checkowners.cli.analyze_ownership", return_value=_OWNERSHIP),
+        patch("checkowners.cli.detect_drift", return_value=_NO_DRIFT),
+        _MOCK_PATH,
+        _MOCK_TOKEN,
+    ):
+        result = runner.invoke(app, ["github-action"])
+    assert result.exit_code == 0

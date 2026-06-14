@@ -108,7 +108,7 @@ def _gather_from_github(config: Config) -> dict[str, int]:
         )
     except ImportError:
         return {}
-    token = get_github_token()
+    token = get_github_token(config.github.token)
     if not token:
         return {}
     client = get_github_client(token)

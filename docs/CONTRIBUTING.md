@@ -86,7 +86,7 @@ Open an issue at <https://github.com/fortyOneTech/checkowners/issues> with:
 
 ## Security issues
 
-Do not open public issues for vulnerabilities. Email <samir.musali@gmail.com> with a description and a proof-of-concept. We will respond and coordinate disclosure.
+Do not open public issues for vulnerabilities. Email <fortyone.technologies@gmail.com> with a description and a proof-of-concept. We will respond and coordinate disclosure.
 
 ## Releasing
 

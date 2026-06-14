@@ -10,7 +10,7 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
-    { name = "Samir Musali", email = "samir.musali@gmail.com" },
+    { name = "Samir Musali", email = "fortyone.technologies@gmail.com" },
 ]
 keywords = [
     "codeowners",

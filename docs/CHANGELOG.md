@@ -89,9 +89,9 @@ Repo now dogfoods its own generated CODEOWNERS.
 - Packaging via hatch; published to PyPI under `checkowners`.
 - CI workflow running tests and lint across Python 3.11, 3.12, 3.13.
 
-[Unreleased]: https://github.com/smusali/checkowners/compare/v0.4.0...HEAD
-[0.4.0]: https://github.com/smusali/checkowners/compare/v0.3.0...v0.4.0
-[0.3.0]: https://github.com/smusali/checkowners/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/smusali/checkowners/compare/v0.1.1...v0.2.0
-[0.1.1]: https://github.com/smusali/checkowners/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/smusali/checkowners/releases/tag/v0.1.0
+[Unreleased]: https://github.com/fortyOneTech/checkowners/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/fortyOneTech/checkowners/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/fortyOneTech/checkowners/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/fortyOneTech/checkowners/compare/v0.1.1...v0.2.0
+[0.1.1]: https://github.com/fortyOneTech/checkowners/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/fortyOneTech/checkowners/releases/tag/v0.1.0

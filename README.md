@@ -1,6 +1,6 @@
 # checkowners
 
-[![CI](https://github.com/smusali/checkowners/actions/workflows/ci.yml/badge.svg)](https://github.com/smusali/checkowners/actions/workflows/ci.yml)
+[![CI](https://github.com/fortyOneTech/checkowners/actions/workflows/ci.yml/badge.svg)](https://github.com/fortyOneTech/checkowners/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/checkowners.svg)](https://pypi.org/project/checkowners/)
 [![PyPI downloads](https://img.shields.io/pypi/dm/checkowners.svg)](https://pypi.org/project/checkowners/)
 [![Python versions](https://img.shields.io/pypi/pyversions/checkowners.svg)](https://pypi.org/project/checkowners/)

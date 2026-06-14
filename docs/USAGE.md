@@ -134,7 +134,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: smusali/checkowners-action@v1
+      - uses: fortyOneTech/checkowners-action@v1
         with:
           mode: repo
           config: .github/checkowners.yml

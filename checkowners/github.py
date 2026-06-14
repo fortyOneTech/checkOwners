@@ -80,6 +80,64 @@ def map_owners(
     }
 
 
+def build_review_coverage(
+    token: str,
+    repo_full_name: str,
+    emails: set[str],
+) -> dict[str, dict[str, float]]:
+    """Build per-path, per-email PR-review coverage for the given repo.
+
+    Returns ``path -> {email: fraction}`` where the fraction is a reviewer's
+    share of all reviews touching that path. Reviewer GitHub logins are mapped
+    back to commit emails (via the same handle resolution used elsewhere) so the
+    coverage keys line up with the contribution emails used for scoring.
+    Returns an empty mapping when the API is unavailable or nothing maps.
+    """
+    client = get_github_client(token)
+    if client is None or not repo_full_name or not emails:
+        return {}
+    email_to_handle = resolve_handles(emails, token)
+    login_to_email = {handle.lstrip("@"): email for email, handle in email_to_handle.items()}
+    if not login_to_email:
+        return {}
+    raw = _gather_review_counts_by_path(client, repo_full_name)
+    coverage: dict[str, dict[str, float]] = {}
+    for path, counts in raw.items():
+        total = sum(counts.values())
+        if total == 0:
+            continue
+        mapped = {
+            login_to_email[login]: count / total
+            for login, count in counts.items()
+            if login in login_to_email
+        }
+        if mapped:
+            coverage[path] = mapped
+    return coverage
+
+
+def _gather_review_counts_by_path(
+    client: Github,
+    repo_full_name: str,
+) -> dict[str, dict[str, int]]:
+    """Count, per file path, how many reviews each reviewer login contributed."""
+    result: dict[str, dict[str, int]] = {}
+    try:
+        repo = client.get_repo(repo_full_name)
+        for pull in repo.get_pulls(state="closed"):
+            reviewers = {review.user.login for review in pull.get_reviews() if review.user}
+            if not reviewers:
+                continue
+            for changed in pull.get_files():
+                per_path = result.setdefault(changed.filename, {})
+                for login in reviewers:
+                    per_path[login] = per_path.get(login, 0) + 1
+    except Exception:  # noqa: BLE001
+        logger.warning("Failed to gather review coverage for %s", repo_full_name)
+        return {}
+    return result
+
+
 def create_team_resolver(
     token: str,
     org: str,

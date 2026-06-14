@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from checkowners.github import (
+    build_review_coverage,
     create_team_resolver,
     get_github_client,
     get_github_token,
@@ -21,6 +22,60 @@ def test_get_github_token_present() -> None:
 def test_get_github_token_missing() -> None:
     with patch.dict("os.environ", {}, clear=True):
         assert get_github_token() == ""
+
+
+def _fake_pull(reviewer_logins: list[str], filenames: list[str]) -> MagicMock:
+    pull = MagicMock()
+    reviews = []
+    for login in reviewer_logins:
+        review = MagicMock()
+        review.user.login = login
+        reviews.append(review)
+    pull.get_reviews.return_value = reviews
+    files = []
+    for name in filenames:
+        changed = MagicMock()
+        changed.filename = name
+        files.append(changed)
+    pull.get_files.return_value = files
+    return pull
+
+
+def test_build_review_coverage_maps_logins_to_emails() -> None:
+    client = MagicMock()
+    repo = MagicMock()
+    repo.get_pulls.return_value = [
+        _fake_pull(["alice", "bob"], ["src/main.py"]),
+        _fake_pull(["alice"], ["src/main.py", "src/util.py"]),
+    ]
+    client.get_repo.return_value = repo
+    email_to_handle = {"alice@example.com": "@alice", "bob@example.com": "@bob"}
+    with (
+        patch("checkowners.github.get_github_client", return_value=client),
+        patch("checkowners.github.resolve_handles", return_value=email_to_handle),
+    ):
+        coverage = build_review_coverage(
+            "tok", "org/repo", {"alice@example.com", "bob@example.com"}
+        )
+    # src/main.py: alice reviewed in 2 pulls, bob in 1 -> total 3.
+    assert coverage["src/main.py"]["alice@example.com"] == 2 / 3
+    assert coverage["src/main.py"]["bob@example.com"] == 1 / 3
+    # src/util.py: only alice, single review -> full coverage.
+    assert coverage["src/util.py"]["alice@example.com"] == 1.0
+
+
+def test_build_review_coverage_empty_without_client() -> None:
+    with patch("checkowners.github.get_github_client", return_value=None):
+        assert build_review_coverage("tok", "org/repo", {"a@example.com"}) == {}
+
+
+def test_build_review_coverage_empty_when_no_handles_resolve() -> None:
+    client = MagicMock()
+    with (
+        patch("checkowners.github.get_github_client", return_value=client),
+        patch("checkowners.github.resolve_handles", return_value={}),
+    ):
+        assert build_review_coverage("tok", "org/repo", {"a@example.com"}) == {}
 
 
 def test_get_github_token_config_fallback() -> None:

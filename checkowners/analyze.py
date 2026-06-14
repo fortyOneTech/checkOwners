@@ -5,7 +5,7 @@ from __future__ import annotations
 import fnmatch
 import math
 import subprocess
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -21,6 +21,12 @@ from checkowners.models import (
 )
 
 _COMMIT_SENTINEL = "COMMIT_START"
+
+#: A review provider maps a set of contributor emails to per-path, per-email
+#: review-coverage fractions (path -> {email: fraction in [0, 1]}). It is
+#: injected so analyze.py itself stays free of network calls; the CLI supplies
+#: a GitHub-backed implementation only when the API is enabled.
+ReviewProvider = Callable[[set[str]], dict[str, dict[str, float]]]
 
 
 @dataclass(frozen=True)
@@ -40,21 +46,46 @@ class _RawCommit:
     files: tuple[str, ...]
 
 
-def analyze_ownership(repo_root: Path, config: Config) -> OwnershipMap:
-    """Analyze git history and return a confidence-scored ownership map."""
+def analyze_ownership(
+    repo_root: Path,
+    config: Config,
+    *,
+    review_provider: ReviewProvider | None = None,
+) -> OwnershipMap:
+    """Analyze git history and return a confidence-scored ownership map.
+
+    When ``review_provider`` is supplied, its per-path, per-email review
+    coverage feeds the review factor of the confidence score; otherwise the
+    review factor is 0.0 (the pure-git default).
+    """
     commits = _get_commit_history(repo_root, config.analysis.lookback_days)
     contributions = _aggregate_contributions(commits)
     contributions = _filter_excluded(contributions, config.paths.exclude)
     contributions = _filter_nonexistent(contributions, repo_root)
     blame_coverage = _gather_blame_coverage(contributions.keys(), repo_root)
+    review_coverage = _gather_review_coverage(contributions, review_provider)
     now = datetime.now(UTC)
-    paths = _build_path_ownerships(contributions, blame_coverage, config, now)
+    paths = _build_path_ownerships(contributions, blame_coverage, review_coverage, config, now)
     return OwnershipMap(paths=paths, last_analyzed=now)
+
+
+def _gather_review_coverage(
+    contributions: dict[str, dict[str, _Contribution]],
+    review_provider: ReviewProvider | None,
+) -> dict[str, dict[str, float]]:
+    """Collect per-path, per-email review coverage from the injected provider."""
+    if review_provider is None:
+        return {}
+    emails = {author for authors in contributions.values() for author in authors}
+    if not emails:
+        return {}
+    return review_provider(emails)
 
 
 def _build_path_ownerships(
     contributions: dict[str, dict[str, _Contribution]],
     blame_coverage: dict[str, dict[str, float]],
+    review_coverage: dict[str, dict[str, float]],
     config: Config,
     now: datetime,
 ) -> dict[str, PathOwnership]:
@@ -70,7 +101,10 @@ def _build_path_ownerships(
             continue
         max_commits = max(c.commits for c in qualified.values())
         path_blame = blame_coverage.get(path, {})
-        entries = _score_owners(qualified, path_blame, max_commits, config.scoring, now)
+        path_review = review_coverage.get(path, {})
+        entries = _score_owners(
+            qualified, path_blame, path_review, max_commits, config.scoring, now
+        )
         filtered = tuple(e for e in entries if e.confidence >= config.analysis.confidence_threshold)
         if not filtered:
             continue
@@ -84,6 +118,7 @@ def _build_path_ownerships(
 def _score_owners(
     qualified: dict[str, _Contribution],
     path_blame: dict[str, float],
+    path_review: dict[str, float],
     max_commits: int,
     scoring: ScoringConfig,
     now: datetime,
@@ -93,7 +128,7 @@ def _score_owners(
         recency = _recency_score(contrib.last_commit, now, scoring.recency_half_life_days)
         frequency = _frequency_score(contrib.commits, max_commits)
         blame = path_blame.get(author, 0.0)
-        review = 0.0
+        review = _clamp(path_review.get(author, 0.0))
         total = _clamp(
             scoring.recency_weight * recency
             + scoring.frequency_weight * frequency

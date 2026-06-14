@@ -13,7 +13,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from checkowners.analyze import analyze_ownership
+from checkowners.analyze import ReviewProvider, analyze_ownership
 from checkowners.balance import BalanceReport, analyze_balance
 from checkowners.busfactor import BusFactorReport, classify, compute_bus_factor
 from checkowners.config import find_codeowners_path, load_config
@@ -21,7 +21,7 @@ from checkowners.decay import DecayReport, detect_decay
 from checkowners.drift import detect_drift
 from checkowners.expertise import rank_expertise
 from checkowners.generate import generate_codeowners
-from checkowners.github import get_github_token, map_owners
+from checkowners.github import build_review_coverage, get_github_token, map_owners
 from checkowners.graph import GraphExtraMissingError, build_graph, to_dot, to_text
 from checkowners.models import (
     Config,
@@ -156,9 +156,31 @@ def _render_ownership_table(ownership: OwnershipMap) -> None:
     console.print(table)
 
 
+def _review_provider(config: Config) -> ReviewProvider | None:
+    """Build a GitHub-backed review provider when the API is enabled.
+
+    Requires github.api_enabled, a resolvable token, and the GITHUB_REPOSITORY
+    slug (set in GitHub Actions). Returns None otherwise, leaving the review
+    factor at 0.0.
+    """
+    if not config.github.api_enabled:
+        return None
+    repo_full_name = os.environ.get("GITHUB_REPOSITORY", "")
+    if not repo_full_name:
+        return None
+    token = get_github_token(config.github.token)
+    if not token:
+        return None
+
+    def provider(emails: set[str]) -> dict[str, dict[str, float]]:
+        return build_review_coverage(token, repo_full_name, emails)
+
+    return provider
+
+
 def _run_analyze(config: Config, repo_root: Path) -> OwnershipMap:
     try:
-        ownership = analyze_ownership(repo_root, config)
+        ownership = analyze_ownership(repo_root, config, review_provider=_review_provider(config))
     except subprocess.CalledProcessError as exc:
         console.print(f"[red]Git command failed:[/red] {exc}")
         raise typer.Exit(code=1) from None

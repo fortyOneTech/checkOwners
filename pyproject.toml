@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "checkowners"
-version = "0.3.0"
+version = "0.4.0"
 description = "Infer CODEOWNERS from git history with confidence scoring, knowledge graphs, expertise decay detection, bus factor analysis, and team topology inference. CI-native."
 readme = "README.md"
 license = "MIT"

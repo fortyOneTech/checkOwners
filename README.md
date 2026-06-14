@@ -70,6 +70,8 @@ All commands accept `--json` and persist their results to `~/.checkowners/state.
 | `checkowners topology` | Infer team boundaries from commit co-occurrence |
 | `checkowners balance` | Detect overloaded reviewers and propose rebalancing |
 | `checkowners onboard <path>` | Generate a learning path from broad-ownership to deep-expertise files |
+| `checkowners trends [--periods N] [--period-days D]` | Show how ownership confidence and bus factor have evolved over time |
+| `checkowners github-action` | Run the full CI flow and write `GITHUB_OUTPUT`; used by the composite Action |
 
 ## Documentation
 

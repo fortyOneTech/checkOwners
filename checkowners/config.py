@@ -192,10 +192,24 @@ def _build_drift_config(data: dict[str, Any]) -> DriftConfig:
     return DriftConfig(**kwargs)
 
 
+def _expand_env_ref(raw: str) -> str:
+    """Expand a ``${VAR}`` reference from the environment; pass literals through.
+
+    Lets a committed checkowners.yml point at a secret without storing it, e.g.
+    ``webhook_url: ${CHECKOWNERS_WEBHOOK_URL}``. An unset variable expands to "".
+    """
+    stripped = raw.strip()
+    if stripped.startswith("${") and stripped.endswith("}"):
+        var = stripped[2:-1]
+        if var.isidentifier():
+            return os.environ.get(var, "")
+    return raw
+
+
 def _build_notifications_config(data: dict[str, Any]) -> NotificationsConfig:
     kwargs: dict[str, Any] = {}
     if "webhook_url" in data:
-        kwargs["webhook_url"] = str(data["webhook_url"])
+        kwargs["webhook_url"] = _expand_env_ref(str(data["webhook_url"]))
     if "include_unchanged" in data:
         kwargs["include_unchanged"] = bool(data["include_unchanged"])
     if "severity_threshold" in data:

@@ -221,6 +221,27 @@ def test_config_path_env_override_absolute(tmp_path: Path, monkeypatch: pytest.M
     assert cfg.analysis.top_n_owners == 9
 
 
+def test_webhook_url_env_interpolation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CHECKOWNERS_WEBHOOK_URL", "https://hooks.example.com/secret")
+    root = _write_config(tmp_path, "notifications:\n  webhook_url: ${CHECKOWNERS_WEBHOOK_URL}\n")
+    cfg = load_config(repo_root=root)
+    assert cfg.notifications.webhook_url == "https://hooks.example.com/secret"
+
+
+def test_webhook_url_env_missing_resolves_empty(tmp_path: Path) -> None:
+    root = _write_config(tmp_path, "notifications:\n  webhook_url: ${UNSET_WEBHOOK}\n")
+    cfg = load_config(repo_root=root)
+    assert cfg.notifications.webhook_url == ""
+
+
+def test_webhook_url_literal_passthrough(tmp_path: Path) -> None:
+    root = _write_config(
+        tmp_path, "notifications:\n  webhook_url: https://hooks.example.com/plain\n"
+    )
+    cfg = load_config(repo_root=root)
+    assert cfg.notifications.webhook_url == "https://hooks.example.com/plain"
+
+
 def test_severity_threshold_invalid_rejected(tmp_path: Path) -> None:
     root = _write_config(tmp_path, "notifications:\n  severity_threshold: extreme\n")
     with pytest.raises(ValueError, match="Invalid notifications.severity_threshold"):
